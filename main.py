@@ -1,10 +1,18 @@
 import os
+import time
 from tkinter import filedialog
 from icecream import ic
+import numpy as np
 import pandas as pd
 from pandas import DataFrame as DF #often used so shortened alias
+#from tensorflow.keras.models import Sequential
+#from tensorflow.keras.layers import LSTM, Dense, Dropout
+from sklearn.preprocessing import MinMaxScaler
 
-dataset_interpretation: dict = {'gender': {
+sequence_length = 10
+
+dataset_interpretation: dict = {
+    'gender': {
         1: 'female',
         2: 'male'
     },
@@ -31,6 +39,17 @@ dataset_interpretation: dict = {'gender': {
     }
 }
 
+dataset_interpretation_reversed: dict = {
+    'gender': {
+        'female':1,
+        'male':2,
+    },
+    'work': {
+        'working or studying':1,
+        'unemployed/sick leave/pension':2
+    }
+}
+
 
 top_path = rf'{os.getcwd()}' # raw strings allow consistent slashes
 ic(top_path)
@@ -44,9 +63,11 @@ def interpret_values(row, conversions):
             row[category] = conversions[category].get(row[category], row[category])
     return row
 
+condition_numbers: list = []
 
 def load_condition_data(scores_data_interpreted):
     numbers = scores_data_interpreted['number']
+    global condition_numbers # call and edit the global variable
     condition_numbers = [item for item in numbers if not item.startswith('control')]
     condition: dict = {}
     condition_path = data_path + r'/condition'
@@ -77,15 +98,47 @@ def load_scores() -> DF:
     scores_data_interpreted = DF()
     for i,row in scores_data.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation)
-        #ic(row_interpreted)
+        ic(row_interpreted)
         scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
 
     scores_data_interpreted = scores_data_interpreted.T #transpose
     ic(scores_data_interpreted.head())
     return scores_data_interpreted
 
-def train_LSTM():
-    pass
+def create_sequences(data, sequence_length):
+    sequences = []
+    for i in range(len(data) - sequence_length):
+        sequence = data[i:i + sequence_length]
+        sequences.append(sequence)
+    return np.array(sequences)
+
+def scale_and_prepare(scores:DF=None,condition:dict=None):
+    # Scale the activity data
+    global sequence_length
+    scalers = {}
+    patient_scaled_data = {}
+    X_time_series = {}
+
+    for patient_id, patient_df in condition.items():
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(np.array(patient_df['activity']).reshape(-1, 1))
+        scalers[patient_id] = scaler
+        patient_scaled_data[patient_id] = scaled_data
+
+    for patient_id, scaled_data in patient_scaled_data.items():
+        X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
+
+    ic(scores.head())
+    demographic: DF = scores[['number', 'age', 'gender', 'madrs1', 'madrs2']]
+
+    ic(demographic)
+    time.sleep(5)
+
+
+    return scalers, patient_scaled_data, X_time_series
+
+def train_LSTM(scores: DF = None, condition: dict = None):
+    scalers_dict, patient_scaled_activity_dict, X_time_series = scale_and_prepare(scores=scores, condition=condition)
 
 
 
@@ -94,4 +147,4 @@ if __name__ == '__main__':
     scores_df = load_scores() #dataframe of scores
     condition_dict_df = load_condition_data(scores_df) #dict of key=condition_n, value=dataframe activity time series
         #cols = timestamp, time_since_start[mins], activity
-    train_LSTM()
+    train_LSTM(scores=scores_df, condition=condition_dict_df)
