@@ -40,6 +40,18 @@ dataset_interpretation: dict = {
 }
 
 dataset_interpretation_reversed: dict = {
+    'age': {
+        '20-24': 1,
+        '25-29': 2,
+        '30-34': 3,
+        '35-39': 4,
+        '40-44': 5,
+        '45-49': 6,
+        '50-54': 7,
+        '55-59': 8,
+        '60-64': 9,
+        '65-69': 10,
+    },
     'gender': {
         'female':1,
         'male':2,
@@ -48,6 +60,19 @@ dataset_interpretation_reversed: dict = {
         'working or studying':1,
         'unemployed/sick leave/pension':2
     }
+}
+
+age_mapping = {
+    '20-24': 1,
+    '25-29': 2,
+    '30-34': 3,
+    '35-39': 4,
+    '40-44': 5,
+    '45-49': 6,
+    '50-54': 7,
+    '55-59': 8,
+    '60-64': 9,
+    '65-69': 10,
 }
 
 
@@ -102,6 +127,7 @@ def load_scores() -> DF:
         scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
 
     scores_data_interpreted = scores_data_interpreted.T #transpose
+    scores_data_interpreted['age'] = str(scores_data_interpreted['age'])
     ic(scores_data_interpreted.head())
     return scores_data_interpreted
 
@@ -129,9 +155,18 @@ def scale_and_prepare(scores:DF=None,condition:dict=None):
         X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
 
     ic(scores.head())
-    demographic: DF = scores[['number', 'age', 'gender', 'madrs1', 'madrs2']]
+    demographic: DF = scores[scores['number'].str.startswith('condition')][['number', 'age', 'gender', 'madrs1',
+                                                                            'madrs2']]
+        #filter out all rows and columns except     number condition_n, age, gender, madrs1, madrs2
 
-    ic(demographic)
+    demographic_encoded = DF() # re-encode data back to integers
+    for i, row in demographic.iterrows():
+        row_interpreted = interpret_values(row, dataset_interpretation_reversed)
+        #ic(row_interpreted)
+        demographic_encoded = pd.concat([demographic_encoded, row_interpreted], axis=1)
+    demographic_encoded = demographic_encoded.T
+
+    ic(demographic_encoded.head())
     time.sleep(5)
 
 
