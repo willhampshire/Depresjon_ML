@@ -45,10 +45,31 @@ def interpret_values(row, conversions):
     return row
 
 
-def load_activity_data():
-    data = []
+def load_condition_data(scores_data_interpreted):
+    numbers = scores_data_interpreted['number']
+    condition_numbers = [item for item in numbers if not item.startswith('control')]
+    condition: dict = {}
+    condition_path = data_path + r'/condition'
 
-def load_scores():
+    for num in condition_numbers:
+        condition_path_num = condition_path + rf'/{num}.csv'
+        activity_data_temp = pd.read_csv(condition_path_num)
+        new_activity_data_temp = DF()
+
+        new_activity_data_temp['timestamp'] = pd.to_datetime(activity_data_temp['timestamp'])
+        new_activity_data_temp['time_since_start[mins]'] = (new_activity_data_temp['timestamp'] - \
+            new_activity_data_temp['timestamp'].iloc[0]).dt.total_seconds() / 60.0
+        new_activity_data_temp['activity'] = activity_data_temp['activity']
+
+        #ic(activity_data_temp.head())
+        condition[num] = new_activity_data_temp
+
+    ic(condition)
+    return condition
+
+
+
+def load_scores() -> DF:
     scores_path = data_path + r'/scores.csv'
     scores_data = pd.read_csv(scores_path)
     ic(scores_data.head()) # check first few records in terminal output
@@ -56,16 +77,21 @@ def load_scores():
     scores_data_interpreted = DF()
     for i,row in scores_data.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation)
-        ic(row_interpreted)
+        #ic(row_interpreted)
         scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
 
     scores_data_interpreted = scores_data_interpreted.T #transpose
     ic(scores_data_interpreted.head())
+    return scores_data_interpreted
+
+def train_LSTM():
+    pass
 
 
 
 
 if __name__ == '__main__':
-    load_scores()
-    #load_activity_data()
-
+    scores_df = load_scores() #dataframe of scores
+    condition_dict_df = load_condition_data(scores_df) #dict of key=condition_n, value=dataframe activity time series
+        #cols = timestamp, time_since_start[mins], activity
+    train_LSTM()
