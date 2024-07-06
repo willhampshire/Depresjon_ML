@@ -132,7 +132,7 @@ def create_sequences(data, sequence_length) -> np.ndarray:
 
 def scale_and_prepare(scores: DF = None, condition: dict = None):
     """
-    Scales data and prepares format for model training.
+    Scales data and prepares data format for model training.
     :param scores: DF
     :param condition: dict
     :return: patient_scaled_data dict, demographic_encoded DF, X_time_series np.ndarray
@@ -253,6 +253,7 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None) -> Model:
     print(f'R-squared: {r2:.3f}')
 
     return model
+
 
 if __name__ == '__main__':
     scores_df = load_scores()  # dataframe of scores
