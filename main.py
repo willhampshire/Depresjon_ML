@@ -1,20 +1,20 @@
 import os
 import time
-from tkinter import filedialog
-from icecream import ic
 import numpy as np
 import pandas as pd
-from pandas import DataFrame as DF  # often used so shortened alias
+from pandas import DataFrame as DF
+from icecream import ic
+from tkinter import filedialog
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, concatenate
 from tensorflow.keras.optimizers import Adam
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score, accuracy_score, matthews_corrcoef, mean_squared_error
 
 sequence_length = 10
 
-dataset_interpretation: dict = {
+dataset_interpretation = {
     'gender': {
         1: 'female',
         2: 'male'
@@ -42,7 +42,7 @@ dataset_interpretation: dict = {
     }
 }
 
-dataset_interpretation_reversed: dict = {
+dataset_interpretation_reversed = {
     'age': {
         '20-24': 1.0,
         '25-29': 2.0,
@@ -65,10 +65,9 @@ dataset_interpretation_reversed: dict = {
     }
 }
 
-top_path = rf'{os.getcwd()}'  # raw strings allow consistent slashes
+top_path = rf'{os.getcwd()}'
 ic(top_path)
 
-# datapath = filedialog.askopenfile("Locate top level folder containing activity data")
 data_path = top_path + r'/data'
 
 def interpret_values(row, conversions, float_conv=0):
@@ -82,13 +81,11 @@ def interpret_values(row, conversions, float_conv=0):
                 row[category] = conversions[category].get(row[category], row[category])
     return row
 
-condition_numbers: list = []
-
 def load_condition_data(scores_data_interpreted):
     numbers = scores_data_interpreted['number']
-    global condition_numbers  # call and edit the global variable
+    global condition_numbers
     condition_numbers = [item for item in numbers if not item.startswith('control')]
-    condition: dict = {}
+    condition = {}
     condition_path = data_path + r'/condition'
 
     for num in condition_numbers:
@@ -101,26 +98,39 @@ def load_condition_data(scores_data_interpreted):
             new_activity_data_temp['timestamp'].iloc[0]).dt.total_seconds() / 60.0
         new_activity_data_temp['activity'] = activity_data_temp['activity']
 
-        # ic(activity_data_temp.head())
         condition[num] = new_activity_data_temp
 
-    # ic(condition)
     return condition
 
-def load_scores() -> DF:
+def load_control_data():
+    control_numbers = [item for item in os.listdir(data_path + r'/control') if item.startswith('control')]
+    control_data = {}
+
+    for num in control_numbers:
+        control_path_num = data_path + rf'/control/{num}'
+        activity_data_temp = pd.read_csv(control_path_num)
+        new_activity_data_temp = DF()
+
+        new_activity_data_temp['timestamp'] = pd.to_datetime(activity_data_temp['timestamp'])
+        new_activity_data_temp['time_since_start[mins]'] = (new_activity_data_temp['timestamp'] - \
+            new_activity_data_temp['timestamp'].iloc[0]).dt.total_seconds() / 60.0
+        new_activity_data_temp['activity'] = activity_data_temp['activity']
+
+        control_data[num] = new_activity_data_temp
+
+    return control_data
+
+def load_scores():
     scores_path = data_path + r'/scores.csv'
     scores_data = pd.read_csv(scores_path)
-    ic(scores_data.head())  # check first few records in terminal output
 
     scores_data_interpreted = DF()
     for i, row in scores_data.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation)
-        # ic(row_interpreted)
         scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
 
-    scores_data_interpreted = scores_data_interpreted.T  # transpose
+    scores_data_interpreted = scores_data_interpreted.T
 
-    # ic(scores_data_interpreted.head())
     return scores_data_interpreted
 
 def create_sequences(data, sequence_length):
@@ -130,76 +140,79 @@ def create_sequences(data, sequence_length):
         sequences.append(sequence)
     return np.array(sequences)
 
-def scale_and_prepare(scores: DF = None, condition: dict = None):
-    # Scale the activity data
-    global sequence_length
+def scale_and_prepare(scores=None, condition=None, control=None):
     scalers = {}
     patient_scaled_data = {}
     X_time_series = {}
 
-    for patient_id, patient_df in condition.items():
-        scaler = MinMaxScaler()
-        scaled_data = scaler.fit_transform(np.array(patient_df['activity']).reshape(-1, 1))
-        scalers[patient_id] = scaler
-        patient_scaled_data[patient_id] = scaled_data
+    if condition:
+        for patient_id, patient_df in condition.items():
+            scaler = MinMaxScaler()
+            scaled_data = scaler.fit_transform(np.array(patient_df['activity']).reshape(-1, 1))
+            scalers[patient_id] = scaler
+            patient_scaled_data[patient_id] = scaled_data
 
-    for patient_id, scaled_data in patient_scaled_data.items():
-        X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
+        for patient_id, scaled_data in patient_scaled_data.items():
+            X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
+
+    if control:
+        for patient_id, patient_df in control.items():
+            scaler = MinMaxScaler()
+            scaled_data = scaler.fit_transform(np.array(patient_df['activity']).reshape(-1, 1))
+            scalers[patient_id] = scaler
+            patient_scaled_data[patient_id] = scaled_data
+
+        for patient_id, scaled_data in patient_scaled_data.items():
+            X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
 
     key_predictors = ['number', 'age', 'gender', 'madrs1', 'madrs2']
-    # ic(scores.head())
 
-    demographic_temp: DF = scores[scores['number'].str.startswith('condition')]
-    # ic(demographic_temp.head())
-
+    demographic_temp = scores[scores['number'].str.startswith('condition')]
     demographic = DF()
     for i, field in enumerate(key_predictors):
         demographic = pd.concat([demographic, demographic_temp[field]], axis=1)
 
-    # filter out all rows and columns except number condition_n, age, gender, madrs1, madrs2
-    ic(demographic.head())
-
-    demographic_encoded = DF()  # re-encode data back to integers
+    demographic_encoded = DF()
     for i, row in demographic.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation_reversed, float_conv=1)
-        # print(f"{row=}, {row_interpreted=}")
         demographic_encoded = pd.concat([demographic_encoded, row_interpreted], axis=1)
     demographic_encoded = demographic_encoded.T
 
-    ic(demographic_encoded.head())
-    time.sleep(5)
-
     return patient_scaled_data, demographic_encoded, X_time_series
 
-def build_LSTM(time_series_shape, supplementary_shape):
-    # Define LSTM branch for time series data
-    time_series_input = Input(shape=time_series_shape, name='time_series_input')
-    x1 = LSTM(64)(time_series_input)
+def build_LSTM(time_series_shape, supplementary_shape=None):
+    if supplementary_shape is None:
+        # Model for control data with only time series input
+        time_series_input = Input(shape=time_series_shape, name='time_series_input')
+        x1 = LSTM(64)(time_series_input)
+        output = Dense(1, activation='linear')(x1)
+        model = Model(inputs=time_series_input, outputs=output)
+    else:
+        # Model for condition data with both time series and supplementary input
+        time_series_input = Input(shape=time_series_shape, name='time_series_input')
+        x1 = LSTM(64)(time_series_input)
+        supplementary_input = Input(shape=supplementary_shape, name='supplementary_input')
+        x2 = Dense(64, activation='relu')(supplementary_input)
+        merged = concatenate([x1, x2])
+        output = Dense(1, activation='linear')(merged)
+        model = Model(inputs=[time_series_input, supplementary_input], outputs=output)
 
-    # Define dense branch for supplementary data
-    supplementary_input = Input(shape=supplementary_shape, name='supplementary_input')
-    x2 = Dense(64, activation='relu')(supplementary_input)
-
-    # Merge branches
-    merged = concatenate([x1, x2])
-    output = Dense(1, activation='linear')(merged)
-
-    # Define and compile model
-    model = Model(inputs=[time_series_input, supplementary_input], outputs=output)
     model.compile(optimizer=Adam(), loss='mse')
 
     return model
 
-
-def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
-    patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores, condition=condition)
+def train_LSTM(scores=None, condition=None, control=None):
+    patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores,
+                                                                                         condition=condition,
+                                                                                         control=control)
 
     X_time_series_combined = []
     X_supplementary_combined = []
     y_combined = []
 
     for patient_id, sequences in X_time_series.items():
-        demographic_data = demographic_refined.loc[demographic_refined['number'] == patient_id].drop(columns=['number']).values
+        demographic_data = demographic_refined.loc[demographic_refined['number'] == patient_id].drop(
+            columns=['number']).values
         if len(demographic_data) == 0:
             continue
 
@@ -218,30 +231,44 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
     model = build_LSTM(time_series_shape=(X_time_series_combined.shape[1], X_time_series_combined.shape[2]),
                              supplementary_shape=(X_supplementary_combined.shape[1],))
 
-    # Split data into training and validation sets
     X_train_ts, X_val_ts, X_train_sup, X_val_sup, y_train, y_val = train_test_split(X_time_series_combined,
                                                                                     X_supplementary_combined,
                                                                                     y_combined,
                                                                                     test_size=0.2,
                                                                                     random_state=42)
 
-    # Train the model
     history = model.fit([X_train_ts, X_train_sup], y_train, epochs=2, batch_size=32,
                         validation_data=([X_val_ts, X_val_sup], y_val))
     model.save('lstm_with_predictors.keras')
 
-    # Predict on validation data
     y_pred = model.predict([X_val_ts, X_val_sup])
 
-    # Calculate Mean Squared Error (MSE)
     mse = mean_squared_error(y_val, y_pred)
     print(f'Mean Squared Error: {mse:.4e}')
 
     return model
 
+def process_control_files(model):
+    control_data = load_control_data()
+    control_predictions = {}
+
+    for control_id, control_df in control_data.items():
+        scaler = MinMaxScaler()
+        scaled_data = scaler.fit_transform(np.array(control_df['activity']).reshape(-1, 1))
+        sequences = create_sequences(scaled_data, sequence_length)
+
+        # Predict using the modified model that accepts only time series input
+        predictions = model.predict(sequences)
+
+        control_predictions[control_id] = predictions.mean()
+
+    return control_predictions
+
 
 if __name__ == '__main__':
-    scores_df = load_scores()  # dataframe of scores
-    condition_dict_df = load_condition_data(scores_df)  # dict of key=condition_n, value=dataframe activity time series
-    # cols = timestamp, time_since_start[mins], activity
+    scores_df = load_scores()
+    condition_dict_df = load_condition_data(scores_df)
     models = train_LSTM(scores=scores_df, condition=condition_dict_df)
+
+    control_predictions = process_control_files(models)
+    ic(control_predictions)
