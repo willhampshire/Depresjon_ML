@@ -9,7 +9,8 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, concatenate
 from tensorflow.keras.optimizers import Adam
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import f1_score, mean_squared_error
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score, accuracy_score, matthews_corrcoef, mean_squared_error
 
 sequence_length = 10
 
@@ -189,6 +190,7 @@ def build_LSTM(time_series_shape, supplementary_shape):
 
     return model
 
+
 def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
     patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores, condition=condition)
 
@@ -216,20 +218,27 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
     model = build_LSTM(time_series_shape=(X_time_series_combined.shape[1], X_time_series_combined.shape[2]),
                              supplementary_shape=(X_supplementary_combined.shape[1],))
 
-    history = model.fit([X_time_series_combined, X_supplementary_combined], y_combined, epochs=1, batch_size=32, validation_split=0.2)
-    model.save('lstm_with_supplementary_data.h5')
+    # Split data into training and validation sets
+    X_train_ts, X_val_ts, X_train_sup, X_val_sup, y_train, y_val = train_test_split(X_time_series_combined,
+                                                                                    X_supplementary_combined,
+                                                                                    y_combined,
+                                                                                    test_size=0.2,
+                                                                                    random_state=42)
+
+    # Train the model
+    history = model.fit([X_train_ts, X_train_sup], y_train, epochs=2, batch_size=32,
+                        validation_data=([X_val_ts, X_val_sup], y_val))
+    model.save('lstm_with_predictors.keras')
 
     # Predict on validation data
-    val_data = history.validation_data
-    y_pred = model.predict([val_data[0][0], val_data[0][1]])
-    y_true = val_data[1]
+    y_pred = model.predict([X_val_ts, X_val_sup])
 
-    # Calculate F1 Score
-    y_pred_classes = np.round(y_pred)
-    f1 = f1_score(y_true, y_pred_classes, average='weighted')
-    print(f'F1 Score: {f1}')
+    # Calculate Mean Squared Error (MSE)
+    mse = mean_squared_error(y_val, y_pred)
+    print(f'Mean Squared Error: {mse:.4e}')
 
     return model
+
 
 if __name__ == '__main__':
     scores_df = load_scores()  # dataframe of scores
