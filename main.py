@@ -1,10 +1,8 @@
 import os
-import time
-from tkinter import filedialog
-from icecream import ic
+from icecream import ic # debugging output
 import numpy as np
 import pandas as pd
-from pandas import DataFrame as DF  # often used so shortened alias
+from pandas import DataFrame as DF  # create and typehint shorthand
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, concatenate
 from tensorflow.keras.optimizers import Adam
@@ -14,8 +12,9 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-sequence_length = 10
+sequence_length = 10 # X time series sequence length
 
+# interpretation of raw data for human analysis
 dataset_interpretation: dict = {
     'gender': {
         1: 'female',
@@ -44,6 +43,7 @@ dataset_interpretation: dict = {
     }
 }
 
+# convert data to ML compatible data
 dataset_interpretation_reversed: dict = {
     'age': {
         '20-24': 1.0,
@@ -67,13 +67,12 @@ dataset_interpretation_reversed: dict = {
     }
 }
 
-top_path = rf'{os.getcwd()}'  # raw strings allow consistent slashes
+top_path = rf'{os.getcwd()}'  # raw strings allow consistent path slashes
 ic(top_path)
 
-# datapath = filedialog.askopenfile("Locate top level folder containing activity data")
-data_path = top_path + r'/data'
+data_path = top_path + r'/data' # if repo pulled fully
 
-def interpret_values(row, conversions, float_conv=0):
+def interpret_values(row, conversions, float_conv=0) -> pd.Series:
     for category in conversions:
         if category in row:
             if category == 'age':
@@ -86,10 +85,11 @@ def interpret_values(row, conversions, float_conv=0):
 
 condition_numbers: list = []
 
-def load_condition_data(scores_data_interpreted):
+def load_condition_data(scores_data_interpreted) -> dict:
     numbers = scores_data_interpreted['number']
     global condition_numbers  # call and edit the global variable
     condition_numbers = [item for item in numbers if not item.startswith('control')]
+
     condition: dict = {}
     condition_path = data_path + r'/condition'
 
@@ -103,11 +103,10 @@ def load_condition_data(scores_data_interpreted):
             new_activity_data_temp['timestamp'].iloc[0]).dt.total_seconds() / 60.0
         new_activity_data_temp['activity'] = activity_data_temp['activity']
 
-        # ic(activity_data_temp.head())
         condition[num] = new_activity_data_temp
 
     # ic(condition)
-    return condition
+    return condition # return explicitly despite global definition
 
 def load_scores() -> DF:
     scores_path = data_path + r'/scores.csv'
@@ -117,7 +116,6 @@ def load_scores() -> DF:
     scores_data_interpreted = DF()
     for i, row in scores_data.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation)
-        # ic(row_interpreted)
         scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
 
     scores_data_interpreted = scores_data_interpreted.T  # transpose
@@ -125,7 +123,7 @@ def load_scores() -> DF:
     # ic(scores_data_interpreted.head())
     return scores_data_interpreted
 
-def create_sequences(data, sequence_length):
+def create_sequences(data, sequence_length) -> np.ndarray:
     sequences = []
     for i in range(len(data) - sequence_length):
         sequence = data[i:i + sequence_length]
@@ -133,6 +131,12 @@ def create_sequences(data, sequence_length):
     return np.array(sequences)
 
 def scale_and_prepare(scores: DF = None, condition: dict = None):
+    """
+    Scales data and prepares format for model training.
+    :param scores: DF
+    :param condition: dict
+    :return: patient_scaled_data dict, demographic_encoded DF, X_time_series np.ndarray
+    """
     # Scale the activity data
     global sequence_length
     scalers = {}
@@ -149,18 +153,14 @@ def scale_and_prepare(scores: DF = None, condition: dict = None):
         X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
 
     key_predictors = ['number', 'age', 'gender', 'madrs1', 'madrs2']
-    # ic(scores.head())
 
     demographic_temp: DF = scores[scores['number'].str.startswith('condition')]
-    # ic(demographic_temp.head())
 
     demographic = DF()
     for i, field in enumerate(key_predictors):
         demographic = pd.concat([demographic, demographic_temp[field]], axis=1)
 
     # filter out all rows and columns except number condition_n, age, gender, madrs1, madrs2
-    #ic(demographic.head())
-
     demographic_encoded = DF()  # re-encode data back to integers
     for i, row in demographic.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation_reversed, float_conv=1)
@@ -172,7 +172,7 @@ def scale_and_prepare(scores: DF = None, condition: dict = None):
 
     return patient_scaled_data, demographic_encoded, X_time_series
 
-def build_LSTM(time_series_shape, supplementary_shape):
+def build_LSTM(time_series_shape, supplementary_shape) -> Model:
     # Define LSTM branch for time series data with dropout and L2 regularization
     time_series_input = Input(shape=time_series_shape, name='time_series_input')
     x1 = LSTM(64, kernel_regularizer=l2(0.01))(time_series_input)
@@ -194,7 +194,7 @@ def build_LSTM(time_series_shape, supplementary_shape):
     return model
 
 
-def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
+def train_LSTM(scores: pd.DataFrame = None, condition: dict = None) -> Model:
     patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores, condition=condition)
 
     X_time_series_combined = []
@@ -230,6 +230,7 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
 
     # Early stopping callback
     early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+        # likely will not activate unless epoch number increased from 10
 
     # Train the model
     model_fitted = model.fit([X_train_ts, X_train_sup], y_train, epochs=10, batch_size=32,
@@ -239,24 +240,17 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
     # Predict on validation data
     y_pred = model.predict([X_val_ts, X_val_sup])
 
-    # Calculate Mean Squared Error (MSE)
+    # Calculate accuracy metrics
     mse = mean_squared_error(y_val, y_pred)
     print(f'Mean Squared Error: {mse:.3e}')
-    # Calculate Root Mean Squared Error (RMSE)
     rmse = np.sqrt(mse)
     print(f'Root Mean Squared Error: {rmse:.3e}')
 
-    # Calculate Mean Absolute Error (MAE)
     mae = mean_absolute_error(y_val, y_pred)
     print(f'Mean Absolute Error: {mae:.3e}')
 
-    # Calculate R-squared (R²)
     r2 = r2_score(y_val, y_pred)
     print(f'R-squared: {r2:.3f}')
-
-    # Calculate Mean Absolute Percentage Error (MAPE)
-    mape = np.mean(np.abs((y_val - y_pred) / y_val)) * 100
-    print(f'Mean Absolute Percentage Error: {mape:.3f}%')
 
     return model
 

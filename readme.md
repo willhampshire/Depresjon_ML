@@ -76,6 +76,7 @@ Relative MAE = MAE / MADRS range = (0.145 / 60) × 100 = 0.242%
 - **Initial data dependency:** Train the model without initial MADRS score, eliminating the need for initial MADRS test.
 - **Model Generalization:** Challenges and considerations for deploying the model include adapting to diverse activity data sources and generalizing across different demographics.
 - **Improvement Strategies:** Future enhancements may involve exploring alternative neural network architectures, incorporating more sophisticated preprocessing techniques, and expanding the dataset to improve model robustness.
+- **Expand age range:** Currently - Min age 20, Max age 69, bins of 5yrs.
 
 ## Acknowledgments
 - **Dataset Attribution:** The ['Depresjon'](https://datasets.simula.no/depresjon/) dataset is sourced from [Simula](https://datasets.simula.no/). Proper attribution is given to the dataset creators and contributors.
