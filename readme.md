@@ -1,4 +1,4 @@
-# Predicting Depression on MADRS Scale Using LSTM (RNN) Machine Learning with Motor Activity Time Series Data
+# Predicting Depression on MADRS Scale using LSTM (RNN) Machine Learning with Motor Activity Time Series Data
 
 ## Introduction
 Using the ['Depresjon'](https://datasets.simula.no/depresjon/) open source dataset, an LSTM machine learning model was 
@@ -52,6 +52,7 @@ states based on sensor data".
 - **Test split:** 30%
 - **Batch size:** 32
 - **Random state:** 42
+- **Raw Data Samples:** 23
 
 ### Performance Metrics
 - **Mean Squared Error:** 5.147e-02
@@ -66,7 +67,7 @@ is fitted into the model).
 Mean Absolute Error (MAE) of 0.145 indicates the average absolute difference between predicted and actual values.
 The value predicted is represented in the source data as 'madrs2', and the context of this number means anything of the 
 order <1 means an accurate prediction is made. Additionally, 99.8% of the variance in the prediction is explained within
-the model (R-squared) - this indicates the data is fitted well.
+the model (R-squared) - this indicates the data is fitted well. Samples tested on: 23 × 30% = 6.9 => 7.
 
 Relative MAE = MAE / MADRS range = (0.145 / 60) × 100 = 0.242%
 
