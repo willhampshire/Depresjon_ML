@@ -25,8 +25,8 @@ LSTMs particularly well-suited for tasks where time context is crucial for accur
 ## Data Source and Preprocessing
 ### Data Source
 The ['Depresjon'](https://datasets.simula.no/depresjon/) dataset consists of 23 condition files with associated activity data and MADRS scores. It is published 
-as pre-anonymised open source data so that researchers can use the data to develop models such as this, to advance research 
-on "the available data may eventually help researchers to develop systems capable of automatically detecting depression 
+as pre-anonymised open source data so that researchers can use the data to develop models such as this, to advance research &ndash; 
+"the available data may eventually help researchers to develop systems capable of automatically detecting depression 
 states based on sensor data".
 
 "[The dataset was originally collected for the study of motor activity in schizophrenia and major depression (doi.org/10.1186/1756-0500-3-149)](https://bmcresnotes.biomedcentral.com/articles/10.1186/1756-0500-3-149). Motor activity was monitored with an actigraph watch worn at the right wrist (Actiwatch, Cambridge Neurotechnology Ltd, England, model AW4). The actigraph watch measures activity levels. The sampling frequency is 32Hz and movements over 0.05 g are recorded. A corresponding voltage is produced and is stored as an activity count in the memory unit of the actigraph watch. The number of counts is proportional to the intensity of the movement. Total activity counts were continuously recorded in one minute intervals."
