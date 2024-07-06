@@ -1,4 +1,4 @@
-# Predicting Depression on MADRS Scale Using LSTM (RNN) with Motor Activity Time Series Data
+# Predicting Depression on MADRS Scale Using LSTM (RNN) Machine Learning with Motor Activity Time Series Data
 
 ## Introduction
 Using the ['Depresjon'](https://datasets.simula.no/depresjon/) open source dataset, an LSTM machine learning model was 
