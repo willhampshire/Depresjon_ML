@@ -24,7 +24,7 @@ LSTMs particularly well-suited for tasks where time context is crucial for accur
 
 ## Data Source and Preprocessing
 ### Data Source
-The ['Depresjon'](https://datasets.simula.no/depresjon/) dataset consists of 23 condition files with associated activity data and MADRS scores. It is published 
+The ['Depresjon'](https://datasets.simula.no/depresjon/) dataset consists of 23 condition files of activity data with associated demographic data & MADRS scores. It is published 
 as pre-anonymised open source data so that researchers can use the data to develop models such as this, to advance research &ndash; 
 "the available data may eventually help researchers to develop systems capable of automatically detecting depression 
 states based on sensor data".
