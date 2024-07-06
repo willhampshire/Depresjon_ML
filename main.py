@@ -229,7 +229,7 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None):
                                                                                     random_state=42)
 
     # Early stopping callback
-    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
     # Train the model
     model_fitted = model.fit([X_train_ts, X_train_sup], y_train, epochs=10, batch_size=32,
