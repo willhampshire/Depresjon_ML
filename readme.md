@@ -39,8 +39,14 @@ Anti-overfitting measures - dropout layers, L2 regularization, and early stoppin
 For smaller datasets, it can be easy to train to specific data rather than learning for a general example (e.g. noise 
 is fitted into the model).
 
-Mean Absolute Error of 0.145 indicates the average absolute difference between predicted and actual values.
-The value predicted is represented in the source data as 'madrs2'.
+Mean Absolute Error (MAE) of 0.145 indicates the average absolute difference between predicted and actual values.
+The value predicted is represented in the source data as 'madrs2', and the context of this number means anything of the 
+order <1 means an accurate prediction is made. Additionally, 99.8% of the variance in the prediction is explained within
+the model (R-squared) - this indicates the data is fitted well.
+
+Relative MAE = MAE / MADRS range = (0.145 / 60) × 100 = 0.242%
+
+
 
 
 ## Future considerations
