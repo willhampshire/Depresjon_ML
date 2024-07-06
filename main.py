@@ -5,8 +5,8 @@ from icecream import ic
 import numpy as np
 import pandas as pd
 from pandas import DataFrame as DF #often used so shortened alias
-#from tensorflow.keras.models import Sequential
-#from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 from sklearn.preprocessing import MinMaxScaler
 
 sequence_length = 10
@@ -85,7 +85,10 @@ data_path = top_path + r'/data'
 def interpret_values(row, conversions):
     for category in conversions:
         if category in row:
-            row[category] = conversions[category].get(row[category], row[category])
+            if category == 'age':
+                row[category] = str(conversions[category].get(row[category], row[category]))
+            else:
+                row[category] = conversions[category].get(row[category], row[category])
     return row
 
 condition_numbers: list = []
@@ -110,7 +113,7 @@ def load_condition_data(scores_data_interpreted):
         #ic(activity_data_temp.head())
         condition[num] = new_activity_data_temp
 
-    ic(condition)
+    #ic(condition)
     return condition
 
 
@@ -123,12 +126,12 @@ def load_scores() -> DF:
     scores_data_interpreted = DF()
     for i,row in scores_data.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation)
-        ic(row_interpreted)
+        #ic(row_interpreted)
         scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
 
     scores_data_interpreted = scores_data_interpreted.T #transpose
-    scores_data_interpreted['age'] = str(scores_data_interpreted['age'])
-    ic(scores_data_interpreted.head())
+
+    #ic(scores_data_interpreted.head())
     return scores_data_interpreted
 
 def create_sequences(data, sequence_length):
@@ -154,28 +157,40 @@ def scale_and_prepare(scores:DF=None,condition:dict=None):
     for patient_id, scaled_data in patient_scaled_data.items():
         X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
 
-    ic(scores.head())
-    demographic: DF = scores[scores['number'].str.startswith('condition')][['number', 'age', 'gender', 'madrs1',
-                                                                            'madrs2']]
+    key_predictors = ['number', 'age', 'gender', 'madrs1', 'madrs2']
+    #ic(scores.head())
+
+    demographic_temp: DF = scores[scores['number'].str.startswith('condition')]
+    #ic(demographic_temp.head())
+
+    demographic = DF()
+    for i,field in enumerate(key_predictors):
+        demographic = pd.concat([demographic, demographic_temp[field]], axis=1)
+
         #filter out all rows and columns except     number condition_n, age, gender, madrs1, madrs2
+    ic(demographic.head())
 
     demographic_encoded = DF() # re-encode data back to integers
     for i, row in demographic.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation_reversed)
-        #ic(row_interpreted)
+        #print(f"{row=}, {row_interpreted=}")
         demographic_encoded = pd.concat([demographic_encoded, row_interpreted], axis=1)
     demographic_encoded = demographic_encoded.T
 
     ic(demographic_encoded.head())
     time.sleep(5)
 
-
-    return scalers, patient_scaled_data, X_time_series
+    return patient_scaled_data, demographic_encoded, X_time_series
 
 def train_LSTM(scores: DF = None, condition: dict = None):
-    scalers_dict, patient_scaled_activity_dict, X_time_series = scale_and_prepare(scores=scores, condition=condition)
+    patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores, condition=condition)
+    # Prepare final input for LSTM for each patient
+    X_combined = {}
 
-
+    for patient_id, sequences in X_time_series.items():
+        demographic_data = X_demographic.loc[X_demographic.index == patient_id].values
+        demographic_data = np.repeat(demographic_data[:, np.newaxis, :], sequences.shape[1], axis=1)
+        X_combined[patient_id] = np.concatenate((sequences, demographic_data), axis=2)
 
 
 if __name__ == '__main__':
