@@ -16,7 +16,7 @@ using metrics to review the quality of the model (underfitted, overfitted etc.).
 predictors for different categorisations of activity levels - for example, different age categories or genders may 
 have different activity patterns.
 
-The LSTM model was chosen as the Activity data series is a time series.
+The LSTM model was chosen, as the Activity data series is a time series.
 LSTM can effectively capture long-term dependencies and patterns in sequential data due to its ability to maintain 
 information over extended periods, reducing the vanishing gradient problem some RNNs face. This makes 
 LSTMs particularly well-suited for tasks where time context is crucial for accurate predictions.
@@ -35,9 +35,9 @@ LSTMs particularly well-suited for tasks where time context is crucial for accur
 - **Mean Absolute Error:** 1.450e-01
 - **R-squared:** 0.998
 
-Anti-overfitting measures are implemented - for smaller datasets, it can be easy to train to specific data rather 
-than learning for a general example (e.g. noise is fitted into the model); 
-dropout layers, L2 regularization, and early stopping (not triggered).
+Anti-overfitting measures - dropout layers, L2 regularization, and early stopping (not triggered) - are implemented. 
+For smaller datasets, it can be easy to train to specific data rather than learning for a general example (e.g. noise 
+is fitted into the model).
 
 Mean Absolute Error of 0.145 indicates the average absolute difference between predicted and actual values.
 The value predicted is represented in the source data as 'madrs2'.
