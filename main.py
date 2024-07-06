@@ -254,7 +254,6 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None) -> Model:
 
     return model
 
-
 if __name__ == '__main__':
     scores_df = load_scores()  # dataframe of scores
     condition_dict_df = load_condition_data(scores_df)  # dict of key=condition_n, value=dataframe activity time series
