@@ -22,7 +22,7 @@ information over extended periods, reducing the vanishing gradient problem some 
 LSTMs particularly well-suited for tasks where time context is crucial for accurate predictions.
 
 
-## Training inputs & results
+## Training inputs & result metrics
 ### Training Configuration
 - **Epochs:** 10
 - **Test split:** 30%
@@ -36,7 +36,7 @@ LSTMs particularly well-suited for tasks where time context is crucial for accur
 - **R-squared:** 0.998
 
 Anti-overfitting measures - dropout layers, L2 regularization, and early stopping (not triggered) - are implemented. 
-For smaller datasets, it can be easy to train to specific data rather than learning for a general example (e.g. noise 
+For smaller datasets, it can be easy to train to specific data rather than learning more holistically (e.g. noise 
 is fitted into the model).
 
 Mean Absolute Error (MAE) of 0.145 indicates the average absolute difference between predicted and actual values.
