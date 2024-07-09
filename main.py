@@ -235,7 +235,7 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None) -> Model:
     # Train the model
     model_fitted = model.fit([X_train_ts, X_train_sup], y_train, epochs=10, batch_size=32,
                              validation_data=([X_val_ts, X_val_sup], y_val), callbacks=[early_stopping])
-    model.save('lstm_with_predictors.keras')
+    model.save('lstm_test.keras')
 
     # Predict on validation data
     y_pred = model.predict([X_val_ts, X_val_sup])
