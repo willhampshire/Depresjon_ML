@@ -1,5 +1,10 @@
 # Predicting Depression on MADRS Scale using LSTM (RNN) Machine Learning with Motor Activity Time Series Data
 
+## Usage
+Clone repository and run `main.py`, or alternatively, use the notebook verision `modeltesting.ipynb` which I used to 
+test the model metrics and graph the loss functions. Notebook format is better for running code after creating the model
+without re-training the model.
+
 ## Introduction
 Using the ['Depresjon'](https://datasets.simula.no/depresjon/) open source dataset, an LSTM machine learning model was 
 used to predict level of depression measured on the MADRS scale. There are 23 condition data files, where subjects were 
@@ -71,6 +76,9 @@ the model (R-squared) - this indicates the data is fitted well. Samples tested o
 
 Relative MAE = MAE / MADRS range = (0.145 / 60) × 100 = 0.242%
 
+Here I ran an overfitted epochs number to demonstrate the anti-overfitting callback `early_stopping` with `patience=5` 
+identifying 10 epochs as the limit before overfitting starts to occur:
+![Model losses image](model_losses.png)
 
 ## Future considerations
 - **Initial data dependency:** Train the model without initial MADRS score, eliminating the need for initial MADRS test.
