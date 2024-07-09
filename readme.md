@@ -78,6 +78,7 @@ Relative MAE = MAE / MADRS range = (0.145 / 60) × 100 = 0.242%
 
 Here I ran an overfitted epochs number to demonstrate the anti-overfitting callback `early_stopping` with `patience=5` 
 identifying 10 epochs as the limit before overfitting starts to occur:
+
 ![Model losses image](model_losses.png)
 
 ## Future considerations
