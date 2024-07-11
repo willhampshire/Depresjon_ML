@@ -87,5 +87,5 @@ identifying 10 epochs as the limit before overfitting starts to occur:
 - **Neural Layers Improvement:** Future enhancements may involve exploring alternative neural network architectures / adding more layers, and incorporating more sophisticated preprocessing techniques.
 
 ## Acknowledgments
-- **Dataset Attribution:** The ['Depresjon'](https://datasets.simula.no/depresjon/) dataset is sourced from [Simula](https://datasets.simula.no/). Proper attribution is given to the dataset creators and contributors.
+- **Dataset Attribution:** The ['Depresjon'](https://datasets.simula.no/depresjon/) dataset is sourced from [Simula](https://datasets.simula.no/).
 - **Tool Acknowledgment:** The project utilizes TensorFlow-Keras for deep learning and scikit-learn for preprocessing and evaluation metrics.
