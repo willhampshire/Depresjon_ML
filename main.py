@@ -239,14 +239,17 @@ def build_lstm_model(hp) -> Model:
     return model
 
 
-def run_hyperparameter_tuning() -> kt.Hyperband:
+import keras_tuner as kt
+
+
+def run_hyperparameter_tuning() -> kt.RandomSearch:
     """Set up hyperparameter tuning using Keras Tuner."""
-    tuner = kt.Hyperband(
+    tuner = kt.RandomSearch(
         build_lstm_model,
         objective="val_loss",
-        max_epochs=4,
-        factor=3,
-        directory="tuning_dir",
+        max_trials=2,  # Number of trials
+        executions_per_trial=1,  # Number of executions per trial
+        directory="hp_tuning",
         project_name="LSTM_tuning",
     )
     return tuner
@@ -347,11 +350,11 @@ def train(
     os.makedirs(model_save_path, exist_ok=True)
 
     for patient_id, model in model_store.items():
-        model.save(os.path.join(model_save_path, f"{model_save_name}_{patient_id}.h5"))
+        model.save(
+            os.path.join(model_save_path, f"{model_save_name}_{patient_id}.keras")
+        )
 
-    with open(
-        os.path.join(model_save_path, f"{model_save_name}_losses.json"), "w"
-    ) as f:
+    with open(os.path.join("results", f"{model_save_name}_losses.json"), "w") as f:
         json.dump(losses_store, f)
 
     return model_store
