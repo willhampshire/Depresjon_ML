@@ -270,123 +270,112 @@ def build_LSTM(hp) -> Model:
     return model
 
 
-def train_LSTM(scores: pd.DataFrame = None, condition: dict = None, model_save_name: str = 'default_name') -> Model:
+def train_LSTM(scores: pd.DataFrame = None, condition: dict = None, model_save_name: str = 'default_name') -> dict:
     patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores,
                                                                                          condition=condition)
 
-    X_time_series_combined = []
-    X_supplementary_combined = []
-    y_combined = []
+    model_store = {}
+    losses_store = {}
 
     for patient_id, sequences in X_time_series.items():
+        vprint(f"Training model for patient: {patient_id}")
 
+        # Get the demographic data for the current patient
         demographic_data = demographic_refined.loc[demographic_refined['number'] == patient_id].drop(
             columns=['number', 'madrs2', 'deltamadrs']).values
         if len(demographic_data) == 0:
             continue
 
-        # demographic_data_repeated = np.repeat(demographic_data, sequences.shape[0], axis=0)
-        X_time_series_combined.append(sequences)
-        X_supplementary_combined.append(demographic_data)
+        demographic_data = demographic_data.astype('float32')
 
+        # Target output values
         y = demographic_refined.loc[demographic_refined['number'] == patient_id, ['madrs2', 'deltamadrs']].values
-        if len(y) > 0:
-            y_combined.append(y[0])
+        if len(y) == 0:
+            continue
+        y = y.astype('float32')
 
-    x_series_shape = np.shape(X_time_series_combined)
-    x_series_shape_new = (x_series_shape[0], x_series_shape[1]*x_series_shape[2], x_series_shape[3])
-    X_time_series_combined = np.array(X_time_series_combined).astype(
-        'float32').reshape(x_series_shape_new)
-    X_supplementary_combined = np.concatenate(X_supplementary_combined, axis=0).astype('float32')
-    y_combined = np.array(y_combined, dtype=np.float32)
+        # Hyperparameter tuner setup
+        hp = kt.HyperParameters()
+        hp.Int('lstm_units', min_value=64, max_value=128, step=8)
+        hp.Float('l2_reg', min_value=0.01, max_value=0.1, step=0.01)
+        hp.Float('dropout_rate', min_value=0.2, max_value=0.5, step=0.1)
+        hp.Int('dense_units', min_value=64, max_value=128, step=8)
+        hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='log')
 
-    print(
-        f"Shape should be (n, 2) {y_combined.shape}\n(n, 3) {X_supplementary_combined.shape}"
-        f"\n(n, x * w, 1) {X_time_series_combined.shape} - often (23, x * 10, 1)")
+        tuner = kt.RandomSearch(
+            build_LSTM,
+            objective='val_loss',
+            max_trials=10,
+            executions_per_trial=2,
+            directory='hp_tuning',
+            project_name=f'lstm_dual_output_{patient_id}',
+            hyperparameters=hp,
+            tune_new_entries=False
+        )
 
-    ic(X_time_series_combined.shape)
-
-    # Hyperparameter tuner setup
-    hp = kt.HyperParameters()
-    hp.Int('lstm_units', min_value=64, max_value=128, step=8)
-    hp.Float('l2_reg', min_value=0.01, max_value=0.1, step=0.01)
-    hp.Float('dropout_rate', min_value=0.2, max_value=0.5, step=0.1)
-    hp.Int('dense_units', min_value=64, max_value=128, step=8)
-    hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='log')
-
-    tuner = kt.RandomSearch(
-        build_LSTM,
-        objective='val_loss',
-        max_trials=10,  # set low for debugging
-        executions_per_trial=2,
-        directory='hp_tuning',
-        project_name='lstm_dual_output',
-        hyperparameters=hp,
-        tune_new_entries=False
-    )
-
-    y1, y2 = np.split(y_combined, 2, axis=1)  # madrs2, dmadrs
-    # Split data into training and validation sets
-    X_train_sup, X_val_sup, y_madrs, y_madrs_test, y_d_madrs, y_d_madrs_test = \
-        train_test_split(
-            X_supplementary_combined,
-            y1,
-            y2,
+        # Split the data for the current patient into train and validation sets
+        X_train_ts, X_val_ts, y_train, y_val = train_test_split(
+            sequences,
+            y,
             test_size=0.3,
-            random_state=42)
+            random_state=42
+        )
 
-    X_train_ts, X_val_ts = train_test_split(
-        X_time_series_combined,
-        test_size=0.3,
-        random_state=42)
+        X_train_ts = X_train_ts.astype('float32')
+        X_val_ts = X_val_ts.astype('float32')
 
-    ic(X_train_ts.shape)
+        # Callbacks
+        early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+        losses = LossHistory()
 
+        # Train the model
+        tuner.search([X_train_ts, demographic_data], [y_train[:, 0], y_train[:, 1]], epochs=2, batch_size=32,
+                     validation_data=([X_val_ts, demographic_data], [y_val[:, 0], y_val[:, 1]]),
+                     callbacks=[early_stopping, losses])
 
-    # callbacks
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    # likely will not activate unless epoch number increased from 10
-    losses = LossHistory()
+        # Get the optimal hyperparameters
+        best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+        print(f"Optimal hyperparameters for {patient_id}:")
+        print(f"LSTM units: {best_hps.get('lstm_units')}")
+        print(f"L2 regularization: {best_hps.get('l2_reg')}")
+        print(f"Dropout rate: {best_hps.get('dropout_rate')}")
+        print(f"Dense units: {best_hps.get('dense_units')}")
+        print(f"Learning rate: {best_hps.get('learning_rate')}")
 
-    tuner.search([X_train_ts, X_train_sup], [y_madrs, y_d_madrs], epochs=2, batch_size=32,
-                 validation_data=([X_val_ts, X_val_sup], [y_madrs_test, y_d_madrs_test]), callbacks=[early_stopping])
+        # Build the model with the optimal hyperparameters and train it
+        model = tuner.hypermodel.build(best_hps)
 
-    # Get the optimal hyperparameters
-    best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-    print(f"Optimal number of LSTM units: {best_hps.get('lstm_units')}")
-    print(f"Optimal L2 regularization: {best_hps.get('l2_reg')}")
-    print(f"Optimal dropout rate: {best_hps.get('dropout_rate')}")
-    print(f"Optimal number of Dense units: {best_hps.get('dense_units')}")
-    print(f"Optimal learning rate: {best_hps.get('learning_rate')}")
+        model_fitted = model.fit([X_train_ts, demographic_data], [y_train[:, 0], y_train[:, 1]], epochs=50,
+                                 batch_size=32,
+                                 validation_data=([X_val_ts, demographic_data], [y_val[:, 0], y_val[:, 1]]),
+                                 callbacks=[early_stopping, losses])
 
-    # Build the model with the optimal hyperparameters and train it
-    model = tuner.hypermodel.build(best_hps)
+        model_name = f"{model_save_name}_{patient_id}.keras"
+        model.save(model_name)
+        model_store[patient_id] = model
+        losses_store[patient_id] = losses.epoch_losses
 
-    model_fitted = model.fit([X_train_ts, X_train_sup], [y_madrs, y_d_madrs], epochs=50, batch_size=32,
-                             validation_data=([X_val_ts, X_val_sup], [y_madrs_test, y_d_madrs_test]),
-                             callbacks=[early_stopping, losses])
-    model.save(model_save_name)
-    ic(losses.epoch_losses)
-    # Predict on validation data
-    pred_madrs, pred_d_madrs = model.predict([X_val_ts, X_val_sup])  # madrs2
+        ic(losses.epoch_losses)
 
-    model_results = {}
-    model_shapes = {"X Time": X_time_series_combined.shape,
-                    "X Supp": X_supplementary_combined.shape,
-                    "Y madrs": y1.shape,
-                    "Y d_madrs": y2.shape}
+        # Predict on validation data
+        pred_madrs, pred_d_madrs = model.predict([X_val_ts, demographic_data])
 
-    model_results["Model used"] = str(model_save_name)
-    model_results["Original Y data"] = np.array([y_madrs, y_d_madrs]).astype(float)
-    model_results["Predicted Y data"] = np.array([pred_madrs, pred_d_madrs]).astype(float)
-    model_results["Data shapes"] = model_shapes
+        model_results = {}
+        model_shapes = {"X Time": X_train_ts.shape,
+                        "Y madrs": y_train[:, 0].shape,
+                        "Y d_madrs": y_train[:, 1].shape}
 
-    cwd = fr'{os.getcwd()}'
-    model_results_fname = cwd + r"/results/results_for_eval.json"
-    with open(model_results_fname, 'w') as json_file:
-        json.dump(model_results, json_file, indent=4)
+        model_results["Model used"] = str(model_name)
+        model_results["Original Y data"] = y_train.astype(float)
+        model_results["Predicted Y data"] = np.array([pred_madrs, pred_d_madrs]).astype(float)
+        model_results["Data shapes"] = model_shapes
 
-    return model, losses
+        cwd = fr'{os.getcwd()}'
+        model_results_fname = cwd + rf"/results/results_for_eval_{patient_id}.json"
+        with open(model_results_fname, 'w') as json_file:
+            json.dump(model_results, json_file, indent=4)
+
+    return model_store, losses_store
 
 
 if __name__ == '__main__':
