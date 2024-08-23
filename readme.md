@@ -1,5 +1,5 @@
 # Predicting Depression on MADRS Scale using LSTM (RNN) Machine Learning with Motor Activity Time Series Data
-## HYPERPARAMETER TUNING BRANCH
+## CLASSIFICATION BRANCH
 ### (some untested code)
 ## Usage
 Clone repository and run `main.py`, or alternatively, use the notebook verision `modeltesting.ipynb` which I used to 

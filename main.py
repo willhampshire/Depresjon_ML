@@ -1,10 +1,10 @@
 import os
 import time
 import json
-from icecream import ic  # debugging output
+from icecream import ic
 import numpy as np
 import pandas as pd
-from pandas import DataFrame as DF  # create and typehint shorthand
+from pandas import DataFrame as DF
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, concatenate, Masking
 from tensorflow.keras.optimizers import Adam
@@ -13,189 +13,146 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras.losses import MeanSquaredError
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import keras_tuner as kt
 
-from debug_tools.print_verbose import print_verbose as vprint  # import custom print debugging tool
+from debug_tools.print_verbose import print_verbose as vprint
 
-sequence_length = 10  # X time series sequence length
+# Define constants and dataset mappings
+sequence_length = 10  # Window size for time series data
 
-# interpretation of raw data for human analysis
-dataset_interpretation: dict = {
-    'gender': {
-        1: 'female',
-        2: 'male'
-    },
-    'afftype': {
-        1: 'bipolar II',
-        2: 'unipolar depressive',
-        3: 'bipolar I'
-    },
-    'melanch': {
-        1: 'melancholia',
-        2: 'no melancholia'
-    },
-    'inpatient': {
-        1: 'inpatient',
-        2: 'outpatient'
-    },
-    'marriage': {
-        1: 'married or cohabiting',
-        2: 'single'
-    },
-    'work': {
-        1: 'working or studying',
-        2: 'unemployed/sick leave/pension'
-    }
+# Interpretation of raw data for human analysis
+dataset_interpretation = {
+    "gender": {1: "female", 2: "male"},
+    "afftype": {1: "bipolar II", 2: "unipolar depressive", 3: "bipolar I"},
+    "melanch": {1: "melancholia", 2: "no melancholia"},
+    "inpatient": {1: "inpatient", 2: "outpatient"},
+    "marriage": {1: "married or cohabiting", 2: "single"},
+    "work": {1: "working or studying", 2: "unemployed/sick leave/pension"},
 }
 
-# convert data to ML compatible data
-dataset_interpretation_reversed: dict = {
-    'age': {
-        '20-24': 1.0,
-        '25-29': 2.0,
-        '30-34': 3.0,
-        '35-39': 4.0,
-        '40-44': 5.0,
-        '45-49': 6.0,
-        '50-54': 7.0,
-        '55-59': 8.0,
-        '60-64': 9.0,
-        '65-69': 10.0,
+# Reversed mappings for encoding demographic data
+dataset_interpretation_reversed = {
+    "age": {
+        "20-24": 1.0,
+        "25-29": 2.0,
+        "30-34": 3.0,
+        "35-39": 4.0,
+        "40-44": 5.0,
+        "45-49": 6.0,
+        "50-54": 7.0,
+        "55-59": 8.0,
+        "60-64": 9.0,
+        "65-69": 10.0,
     },
-    'gender': {
-        'female': 1.0,
-        'male': 2.0,
-    },
-    'work': {
-        'working or studying': 1.0,
-        'unemployed/sick leave/pension': 2.0
-    }
+    "gender": {"female": 1.0, "male": 2.0},
+    "work": {"working or studying": 1.0, "unemployed/sick leave/pension": 2.0},
 }
 
-top_path = rf'{os.getcwd()}'  # raw strings allow consistent path slashes
+top_path = rf"{os.getcwd()}"
 ic(top_path)
 
-data_path = top_path + r'/data'  # if repo pulled fully
+data_path = top_path + r"/data"  # Adjust to your data directory
+
 
 class LossHistory(Callback):
+    """Custom callback to record losses during training."""
+
     def on_train_begin(self, logs=None):
-        # Initialize dictionaries to store losses for each output
         self.epoch_losses = {
-            'madrs2_loss': [],
-            'deltamadrs_loss': [],
-            'val_madrs2_loss': [],
-            'val_deltamadrs_loss': []
+            "madrs2_loss": [],
+            "deltamadrs_loss": [],
+            "val_madrs2_loss": [],
+            "val_deltamadrs_loss": [],
         }
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-
-        # Get training losses for each output
-        if 'loss' in logs:
-            # Assuming 'loss' is a list of losses for each output
-            if isinstance(logs['loss'], list):
-                self.epoch_losses['madrs2_loss'].append(logs['loss'][0])
-                self.epoch_losses['deltamadrs_loss'].append(logs['loss'][1])
+        if "loss" in logs:
+            if isinstance(logs["loss"], list):
+                self.epoch_losses["madrs2_loss"].append(logs["loss"][0])
+                self.epoch_losses["deltamadrs_loss"].append(logs["loss"][1])
             else:
-                self.epoch_losses['madrs2_loss'].append(-1)
-                self.epoch_losses['deltamadrs_loss'].append(-1)
-
-        # Get validation losses for each output
-        if 'val_loss' in logs:
-            # Assuming 'val_loss' is a list of validation losses for each output
-            if isinstance(logs['val_loss'], list):
-                self.epoch_losses['val_madrs2_loss'].append(logs['val_loss'][0])
-                self.epoch_losses['val_deltamadrs_loss'].append(logs['val_loss'][1])
+                self.epoch_losses["madrs2_loss"].append(-1)
+                self.epoch_losses["deltamadrs_loss"].append(-1)
+        if "val_loss" in logs:
+            if isinstance(logs["val_loss"], list):
+                self.epoch_losses["val_madrs2_loss"].append(logs["val_loss"][0])
+                self.epoch_losses["val_deltamadrs_loss"].append(logs["val_loss"][1])
             else:
-                self.epoch_losses['val_madrs2_loss'].append(-1)
-                self.epoch_losses['val_deltamadrs_loss'].append(-1)
+                self.epoch_losses["val_madrs2_loss"].append(-1)
+                self.epoch_losses["val_deltamadrs_loss"].append(-1)
 
-
-def loss_mse(y_true, y_pred):
-    mse = MeanSquaredError()
-    loss1 = mse(y_true[0], y_pred[0])
-    loss2 = mse(y_true[1], y_pred[1])
-    return loss1 + loss2
 
 def interpret_values(row, conversions, float_conv=0) -> pd.Series:
+    """Convert dataset row values based on provided mappings."""
     for category in conversions:
         if category in row:
-            if category == 'age':
-                row[category] = str(conversions[category].get(row[category], row[category]))
+            if category == "age":
+                row[category] = str(
+                    conversions[category].get(row[category], row[category])
+                )
             elif float_conv == 1:
-                row[category] = float(conversions[category].get(row[category], row[category]))
+                row[category] = float(
+                    conversions[category].get(row[category], row[category])
+                )
             else:
                 row[category] = conversions[category].get(row[category], row[category])
     return row
 
 
-condition_numbers: list = []
-
-
 def load_condition_data(scores_data_interpreted) -> dict:
-    numbers = scores_data_interpreted['number']
-    global condition_numbers  # call and edit the global variable
-    condition_numbers = [item for item in numbers if not item.startswith('control')]
-
-    condition: dict = {}
-    condition_path = data_path + r'/condition'
+    """Load time series data for each condition (patient) from CSV files."""
+    numbers = scores_data_interpreted["number"]
+    condition_numbers = [item for item in numbers if not item.startswith("control")]
+    condition_data = {}
+    condition_path = data_path + r"/condition"
 
     for num in condition_numbers:
-        condition_path_num = condition_path + rf'/{num}.csv'
+        condition_path_num = condition_path + rf"/{num}.csv"
         activity_data_temp = pd.read_csv(condition_path_num)
         new_activity_data_temp = DF()
 
-        new_activity_data_temp['timestamp'] = pd.to_datetime(activity_data_temp['timestamp'])
-        new_activity_data_temp['time_since_start[mins]'] = (new_activity_data_temp['timestamp'] - \
-                                                            new_activity_data_temp['timestamp'].iloc[
-                                                                0]).dt.total_seconds() / 60.0
-        new_activity_data_temp['activity'] = activity_data_temp['activity']
+        new_activity_data_temp["timestamp"] = pd.to_datetime(
+            activity_data_temp["timestamp"]
+        )
+        new_activity_data_temp["time_since_start[mins]"] = (
+            new_activity_data_temp["timestamp"]
+            - new_activity_data_temp["timestamp"].iloc[0]
+        ).dt.total_seconds() / 60.0
+        new_activity_data_temp["activity"] = activity_data_temp["activity"]
 
-        condition[num] = new_activity_data_temp
+        condition_data[num] = new_activity_data_temp
 
-    # ic(condition)
-    return condition  # return explicitly despite global definition
+    return condition_data
 
 
 def load_scores() -> DF:
-    scores_path = data_path + r'/scores.csv'
+    """Load and interpret scores from the scores.csv file."""
+    scores_path = data_path + r"/scores.csv"
     scores_data = pd.read_csv(scores_path)
-    # ic(scores_data.head())  # check first few records in terminal output
-
     scores_data_interpreted = DF()
+
     for i, row in scores_data.iterrows():
         row_interpreted = interpret_values(row, dataset_interpretation)
-        scores_data_interpreted = pd.concat([scores_data_interpreted, row_interpreted], axis=1)
+        scores_data_interpreted = pd.concat(
+            [scores_data_interpreted, row_interpreted], axis=1
+        )
 
-    scores_data_interpreted = scores_data_interpreted.T  # transpose
-
-    # ic(scores_data_interpreted.head())
+    scores_data_interpreted = scores_data_interpreted.T
     return scores_data_interpreted
 
 
-def create_sequences(data, sequence_length, max_super_sequence_size, mask=-1) -> np.ndarray:
+def create_sequences(data, sequence_length) -> np.ndarray:
+    """Create sliding window sequences from time series data."""
     sequences = []
-    for i in range(len(data) - sequence_length):
-        sequence = data[i:i + sequence_length]
+    for i in range(len(data) - sequence_length + 1):
+        sequence = data[i : i + sequence_length]
         sequences.append(sequence)
-
-    max_len = max_super_sequence_size - len(sequences)
-    shape = ((0, max_len), (0, 0), (0, 0))
-    # ic(max_super_sequence_size, shape, np.shape(sequences))
-    finished_sequences = np.pad(sequences, shape, mode='constant', constant_values=-1)
-    # ic(max_super_sequence_size, finished_sequences, finished_sequences.shape)
-    return finished_sequences
+    return np.array(sequences)
 
 
 def scale_and_prepare(scores: DF = None, condition: dict = None):
-    """
-    Scales data and prepares data format for model training.
-    :param scores: DF
-    :param condition: dict
-    :return: patient_scaled_data dict, demographic_encoded DF, X_time_series np.ndarray
-    """
-    # Scale the activity data
+    """Scale and prepare data for model training."""
     global sequence_length
     scalers = {}
     patient_scaled_data = {}
@@ -203,76 +160,105 @@ def scale_and_prepare(scores: DF = None, condition: dict = None):
 
     for patient_id, patient_df in condition.items():
         scaler = MinMaxScaler()
-        scaled_data = scaler.fit_transform(np.array(patient_df['activity']).reshape(-1, 1))
+        scaled_data = scaler.fit_transform(
+            np.array(patient_df["activity"]).reshape(-1, 1)
+        )
         scalers[patient_id] = scaler
         patient_scaled_data[patient_id] = scaled_data
 
-    max_length: int = 0
-    for _, scaled_data in patient_scaled_data.items():
-        scaled_data_len: int = len(scaled_data)
-        if int(scaled_data_len) > int(max_length):
-            max_length = scaled_data_len
+    max_length = max(len(scaled_data) for scaled_data in patient_scaled_data.values())
 
     for patient_id, scaled_data in patient_scaled_data.items():
-        X_time_series[patient_id] = create_sequences(scaled_data, sequence_length, max_length)
+        X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
 
-    key_predictors = ['number', 'age', 'gender', 'madrs1', 'madrs2']
-    add_predictor = 'deltamadrs'
+    key_predictors = ["number", "age", "gender", "madrs1", "madrs2"]
+    add_predictor = "deltamadrs"
 
-    demographic_temp: DF = scores[scores['number'].str.startswith('condition')]
-    # demographic_temp[add_predictor] = demographic_temp['madrs2'] - demographic_temp['madrs1']
-    demographic_temp.insert(len(key_predictors), add_predictor, demographic_temp['madrs2'] - demographic_temp['madrs1'])
+    demographic_temp = scores[scores["number"].str.startswith("condition")]
+    demographic_temp.insert(
+        len(key_predictors),
+        add_predictor,
+        demographic_temp["madrs2"] - demographic_temp["madrs1"],
+    )
 
     key_predictors.append(add_predictor)
+    demographic = demographic_temp[key_predictors]
 
-    demographic = DF()
-    for i, field in enumerate(key_predictors):
-        demographic = pd.concat([demographic, demographic_temp[field]], axis=1)
-
-    # filter out all rows and columns except number condition_n, age, gender, madrs1, madrs2
-    demographic_encoded = DF()  # re-encode data back to integers
+    demographic_encoded = DF()
     for i, row in demographic.iterrows():
-        row_interpreted = interpret_values(row, dataset_interpretation_reversed, float_conv=1)
-        # print(f"{row=}, {row_interpreted=}")
+        row_interpreted = interpret_values(
+            row, dataset_interpretation_reversed, float_conv=1
+        )
         demographic_encoded = pd.concat([demographic_encoded, row_interpreted], axis=1)
     demographic_encoded = demographic_encoded.T
 
     return patient_scaled_data, demographic_encoded, X_time_series
 
 
-def build_LSTM(hp) -> Model:
-    # Define LSTM branch for time series data with dropout and L2 regularization
-    time_series_input = Input(shape=(None, 1), name='time_series_input')
+def build_lstm_model(hp) -> Model:
+    """Build the LSTM model for training."""
+    time_series_input = Input(shape=(None, 1), name="time_series_input")
     time_series_masked_input = Masking(mask_value=-1.0)(time_series_input)
-    lstm_units = hp.get('lstm_units')
-    l2_reg = hp.get('l2_reg')
-    x1 = LSTM(lstm_units, kernel_regularizer=l2(l2_reg))(time_series_masked_input)
-    dropout_rate = hp.get('dropout_rate')
-    x1 = Dropout(dropout_rate)(x1)
 
-    # Define dense branch for supplementary data with dropout and L2 regularization
-    supplementary_input = Input(shape=(3,), name='supplementary_input')  # Fixed input shape of 3 demographic features
-    dense_units = hp.get('dense_units')
-    x2 = Dense(dense_units, activation='relu', kernel_regularizer=l2(l2_reg))(supplementary_input)
-    x2 = Dropout(dropout_rate)(x2)
+    # Define hyperparameters using Keras Tuner methods
+    lstm_units = hp.Int("lstm_units", min_value=50, max_value=200, step=50)
+    lstm_dropout = hp.Float("lstm_dropout", min_value=0.0, max_value=0.5, step=0.1)
+    lstm_recurrent_dropout = hp.Float(
+        "lstm_recurrent_dropout", min_value=0.0, max_value=0.5, step=0.1
+    )
+    l2_reg = hp.Float("l2_reg", min_value=0.0, max_value=0.1, step=0.01)
 
-    # Merge branches
-    merged = concatenate([x1, x2])
-    dense_concatenated = Dense(32, activation='relu')(merged)
-    madrs2 = Dense(1, activation='relu')(dense_concatenated)
-    deltamadrs = Dense(1, activation='relu')(dense_concatenated)
+    lstm_layer = LSTM(
+        lstm_units,
+        dropout=lstm_dropout,
+        recurrent_dropout=lstm_recurrent_dropout,
+        return_sequences=False,
+        kernel_regularizer=l2(l2_reg),
+    )(time_series_masked_input)
 
-    # Define and compile model
-    learning_rate = hp.get('learning_rate')
-    model = Model(inputs=[time_series_input, supplementary_input], outputs=[madrs2, deltamadrs])
-    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='mse')
+    demographic_input = Input(shape=(5,), name="demographic_input")
+
+    combined_input = concatenate([lstm_layer, demographic_input])
+
+    dense1_units = hp.Int("dense1_units", min_value=32, max_value=128, step=32)
+    dense1_dropout = hp.Float("dense1_dropout", min_value=0.0, max_value=0.5, step=0.1)
+
+    dense_layer = Dense(dense1_units, activation="relu", kernel_regularizer=l2(l2_reg))(
+        combined_input
+    )
+    dropout_layer = Dropout(dense1_dropout)(dense_layer)
+
+    output1 = Dense(1, name="madrs2")(dropout_layer)
+    output2 = Dense(1, name="deltamadrs")(dropout_layer)
+
+    model = Model(
+        inputs=[time_series_input, demographic_input], outputs=[output1, output2]
+    )
+    model.compile(optimizer=Adam(), loss=MeanSquaredError(), metrics=["mae", "mae"])
 
     return model
 
 
-def train_LSTM(scores: pd.DataFrame = None, condition: dict = None, model_save_name: str = 'default_name') -> dict:
-    patient_scaled_activity_dict, demographic_refined, X_time_series = scale_and_prepare(scores=scores,
-                                                                                         condition=condition)
+def run_hyperparameter_tuning() -> kt.Hyperband:
+    """Set up hyperparameter tuning using Keras Tuner."""
+    tuner = kt.Hyperband(
+        build_lstm_model,
+        objective="val_loss",
+        max_epochs=4,
+        factor=3,
+        directory="tuning_dir",
+        project_name="LSTM_tuning",
+    )
+    return tuner
+
+
+def train(
+    scores: DF = None, condition: dict = None, model_save_name: str = "default_name"
+) -> dict:
+    """Train the LSTM model for each patient's data."""
+    patient_scaled_data, demographic_refined, X_time_series = scale_and_prepare(
+        scores=scores, condition=condition
+    )
 
     model_store = {}
     losses_store = {}
@@ -280,107 +266,108 @@ def train_LSTM(scores: pd.DataFrame = None, condition: dict = None, model_save_n
     for patient_id, sequences in X_time_series.items():
         vprint(f"Training model for patient: {patient_id}")
 
-        # Get the demographic data for the current patient
-        demographic_data = demographic_refined.loc[demographic_refined['number'] == patient_id].drop(
-            columns=['number', 'madrs2', 'deltamadrs']).values
-        if len(demographic_data) == 0:
-            continue
-
-        demographic_data = demographic_data.astype('float32')
-
-        # Target output values
-        y = demographic_refined.loc[demographic_refined['number'] == patient_id, ['madrs2', 'deltamadrs']].values
-        if len(y) == 0:
-            continue
-        y = y.astype('float32')
-
-        # Hyperparameter tuner setup
-        hp = kt.HyperParameters()
-        hp.Int('lstm_units', min_value=64, max_value=128, step=8)
-        hp.Float('l2_reg', min_value=0.01, max_value=0.1, step=0.01)
-        hp.Float('dropout_rate', min_value=0.2, max_value=0.5, step=0.1)
-        hp.Int('dense_units', min_value=64, max_value=128, step=8)
-        hp.Float('learning_rate', min_value=1e-4, max_value=1e-2, sampling='log')
-
-        tuner = kt.RandomSearch(
-            build_LSTM,
-            objective='val_loss',
-            max_trials=10,
-            executions_per_trial=2,
-            directory='hp_tuning',
-            project_name=f'lstm_dual_output_{patient_id}',
-            hyperparameters=hp,
-            tune_new_entries=False
+        demographic_data = (
+            demographic_refined.loc[demographic_refined["number"] == patient_id]
+            .drop(columns=["number"])
+            .to_numpy()
+            .astype(np.float32)
         )
 
-        # Split the data for the current patient into train and validation sets
-        X_train_ts, X_val_ts, y_train, y_val = train_test_split(
-            sequences,
-            y,
-            test_size=0.3,
-            random_state=42
+        # Preparing X and y
+        X = sequences
+        y_madrs2 = demographic_refined[demographic_refined["number"] == patient_id][
+            "madrs2"
+        ].values
+        y_delta_madrs = demographic_refined[
+            demographic_refined["number"] == patient_id
+        ]["deltamadrs"].values
+
+        y_madrs2 = np.repeat(y_madrs2, len(X)).astype(float)
+        y_delta_madrs = np.repeat(y_delta_madrs, len(X)).astype(float)
+
+        ic(X.shape, y_madrs2.shape, y_delta_madrs.shape)
+
+        # Ensure y_madrs2 and y_delta_madrs have the same length as X
+        if len(X) != len(y_madrs2):
+            raise ValueError(
+                f"Length mismatch between X and y arrays for patient {patient_id}"
+            )
+
+        # Create y_train and y_test arrays
+        y = np.vstack([y_madrs2, y_delta_madrs]).T  # Shape: (num_samples, 2)
+        y_train, y_test = train_test_split(y, test_size=0.3, random_state=42)
+
+        X_train, X_test = train_test_split(X, test_size=0.3, random_state=42)
+
+        tuner = run_hyperparameter_tuning()
+
+        early_stopping = EarlyStopping(
+            monitor="val_loss", patience=5, restore_best_weights=True
         )
 
-        X_train_ts = X_train_ts.astype('float32')
-        X_val_ts = X_val_ts.astype('float32')
+        history = LossHistory()
 
-        # Callbacks
-        early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-        losses = LossHistory()
+        # Ensure y_train and y_test have the right dimensions
+        y_train_0 = y_train[:, 0]
+        y_train_1 = y_train[:, 1]
+        y_test_0 = y_test[:, 0]
+        y_test_1 = y_test[:, 1]
 
-        # Train the model
-        tuner.search([X_train_ts, demographic_data], [y_train[:, 0], y_train[:, 1]], epochs=2, batch_size=32,
-                     validation_data=([X_val_ts, demographic_data], [y_val[:, 0], y_val[:, 1]]),
-                     callbacks=[early_stopping, losses])
+        tuner.search(
+            [X_train, np.tile(demographic_data, (X_train.shape[0], 1))],
+            [y_train_0, y_train_1],
+            epochs=1,  # adjust here
+            validation_split=0.3,
+            callbacks=[early_stopping, history],
+        )
 
-        # Get the optimal hyperparameters
         best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-        print(f"Optimal hyperparameters for {patient_id}:")
-        print(f"LSTM units: {best_hps.get('lstm_units')}")
-        print(f"L2 regularization: {best_hps.get('l2_reg')}")
-        print(f"Dropout rate: {best_hps.get('dropout_rate')}")
-        print(f"Dense units: {best_hps.get('dense_units')}")
-        print(f"Learning rate: {best_hps.get('learning_rate')}")
 
-        # Build the model with the optimal hyperparameters and train it
-        model = tuner.hypermodel.build(best_hps)
+        best_model = tuner.hypermodel.build(best_hps)
+        best_model.fit(
+            [X_train, np.tile(demographic_data, (X_train.shape[0], 1))],
+            [y_train_0, y_train_1],
+            epochs=2,  # adjust here
+            validation_split=0.2,
+            callbacks=[early_stopping, history],
+        )
 
-        model_fitted = model.fit([X_train_ts, demographic_data], [y_train[:, 0], y_train[:, 1]], epochs=50,
-                                 batch_size=32,
-                                 validation_data=([X_val_ts, demographic_data], [y_val[:, 0], y_val[:, 1]]),
-                                 callbacks=[early_stopping, losses])
+        loss = best_model.evaluate(
+            [X_test, np.tile(demographic_data, (X_test.shape[0], 1))],
+            [y_test_0, y_test_1],
+        )
 
-        model_name = f"{model_save_name}_{patient_id}.keras"
-        model.save(model_name)
-        model_store[patient_id] = model
-        losses_store[patient_id] = losses.epoch_losses
+        model_store[patient_id] = best_model
+        losses_store[patient_id] = loss
 
-        ic(losses.epoch_losses)
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    model_save_path = os.path.join(
+        top_path, "saved_models", model_save_name + f"_{timestamp}"
+    )
+    os.makedirs(model_save_path, exist_ok=True)
 
-        # Predict on validation data
-        pred_madrs, pred_d_madrs = model.predict([X_val_ts, demographic_data])
+    for patient_id, model in model_store.items():
+        model.save(os.path.join(model_save_path, f"{model_save_name}_{patient_id}.h5"))
 
-        model_results = {}
-        model_shapes = {"X Time": X_train_ts.shape,
-                        "Y madrs": y_train[:, 0].shape,
-                        "Y d_madrs": y_train[:, 1].shape}
+    with open(
+        os.path.join(model_save_path, f"{model_save_name}_losses.json"), "w"
+    ) as f:
+        json.dump(losses_store, f)
 
-        model_results["Model used"] = str(model_name)
-        model_results["Original Y data"] = y_train.astype(float)
-        model_results["Predicted Y data"] = np.array([pred_madrs, pred_d_madrs]).astype(float)
-        model_results["Data shapes"] = model_shapes
-
-        cwd = fr'{os.getcwd()}'
-        model_results_fname = cwd + rf"/results/results_for_eval_{patient_id}.json"
-        with open(model_results_fname, 'w') as json_file:
-            json.dump(model_results, json_file, indent=4)
-
-    return model_store, losses_store
+    return model_store
 
 
-if __name__ == '__main__':
-    scores_df = load_scores()  # dataframe of scores
-    condition_dict_df = load_condition_data(scores_df)  # dict of key=condition_n, value=dataframe activity time series
-    # cols = timestamp, time_since_start[mins], activity
+def main():
+    """Main function to execute the training."""
+    scores_data = load_scores()
+    condition_data = load_condition_data(scores_data)
 
-    models, losses = train_LSTM(scores=scores_df, condition=condition_dict_df, model_save_name='depresjon_2.keras')
+    models = train(
+        scores=scores_data,
+        condition=condition_data,
+        model_save_name="multi_patient_lstm",
+    )
+
+
+if __name__ == "__main__":
+    main()
