@@ -1,10 +1,11 @@
 import os
 import time
 import json
-from icecream import ic
+from typing import Tuple, Dict
 import numpy as np
 import pandas as pd
 from pandas import DataFrame as DF
+import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout, concatenate, Masking
 from tensorflow.keras.optimizers import Adam
@@ -16,6 +17,9 @@ from sklearn.model_selection import train_test_split
 import keras_tuner as kt
 
 from debug_tools.print_verbose import print_verbose as vprint
+from icecream import ic
+
+# tf.debugging.set_log_device_placement(True)
 
 # Define constants and dataset mappings
 sequence_length = 10  # Window size for time series data
@@ -151,48 +155,86 @@ def create_sequences(data, sequence_length) -> np.ndarray:
     return np.array(sequences)
 
 
-def scale_and_prepare(scores: DF = None, condition: dict = None):
+def scale_and_prepare(
+    scores: pd.DataFrame = None, condition: Dict[str, pd.DataFrame] = None
+) -> Tuple[np.ndarray, pd.DataFrame, np.ndarray]:
     """Scale and prepare data for model training."""
     global sequence_length
     scalers = {}
     patient_scaled_data = {}
     X_time_series = {}
 
+    # Scale data for each patient
     for patient_id, patient_df in condition.items():
         scaler = MinMaxScaler()
         scaled_data = scaler.fit_transform(
-            np.array(patient_df["activity"]).reshape(-1, 1)
+            np.array(patient_df["activity"])
+            .reshape(-1, 1)
+            .astype(float)  # Ensure float type
         )
         scalers[patient_id] = scaler
         patient_scaled_data[patient_id] = scaled_data
 
-    max_length = max(len(scaled_data) for scaled_data in patient_scaled_data.values())
-
+    # Create sequences for each patient
     for patient_id, scaled_data in patient_scaled_data.items():
         X_time_series[patient_id] = create_sequences(scaled_data, sequence_length)
 
     key_predictors = ["number", "age", "gender", "madrs1", "madrs2"]
     add_predictor = "deltamadrs"
 
-    demographic_temp = scores[scores["number"].str.startswith("condition")]
-    demographic_temp.insert(
-        len(key_predictors),
-        add_predictor,
-        demographic_temp["madrs2"] - demographic_temp["madrs1"],
-    )
+    # Prepare demographic data
+    demographic_temp = scores[scores["number"].str.startswith("condition")].copy()
+    demographic_temp[add_predictor] = demographic_temp["madrs2"].astype(
+        float
+    ) - demographic_temp["madrs1"].astype(float)
 
     key_predictors.append(add_predictor)
     demographic = demographic_temp[key_predictors]
 
-    demographic_encoded = DF()
-    for i, row in demographic.iterrows():
-        row_interpreted = interpret_values(
-            row, dataset_interpretation_reversed, float_conv=1
-        )
-        demographic_encoded = pd.concat([demographic_encoded, row_interpreted], axis=1)
-    demographic_encoded = demographic_encoded.T
+    # Encode the demographic data
+    for column in demographic.columns:
+        if column in dataset_interpretation_reversed:
+            demographic.loc[:, column] = demographic[column].map(
+                dataset_interpretation_reversed[column]
+            )
 
-    return patient_scaled_data, demographic_encoded, X_time_series
+    # Combine all time series data and demographic data for all patients
+    all_sequences = []
+    all_y_madrs2 = []
+    all_y_delta_madrs = []
+    all_demographics = []
+
+    for patient_id, sequences in X_time_series.items():
+        num_sequences = len(sequences)
+        all_sequences.append(sequences)
+
+        # Extract the demographic row for the current patient
+        patient_demographic = demographic[demographic["number"] == patient_id]
+
+        # Repeat the demographic data row to match the number of sequences
+        repeated_demographic = pd.DataFrame(
+            np.repeat(patient_demographic.values, num_sequences, axis=0),
+            columns=demographic.columns,
+        )
+        all_demographics.append(repeated_demographic)
+
+        y_madrs2 = np.repeat(patient_demographic["madrs2"].values, num_sequences)
+        y_delta_madrs = np.repeat(
+            patient_demographic["deltamadrs"].values, num_sequences
+        )
+        all_y_madrs2.append(y_madrs2)
+        all_y_delta_madrs.append(y_delta_madrs)
+
+    X_combined = np.vstack(all_sequences).astype(float)  # Ensure float type
+    y_madrs2_combined = np.concatenate(all_y_madrs2).astype(float)
+    y_delta_madrs_combined = np.concatenate(all_y_delta_madrs).astype(float)
+
+    y_combined = np.vstack([y_madrs2_combined, y_delta_madrs_combined]).T.astype(float)
+
+    # Concatenate all repeated demographic data frames into one
+    demographic_combined = pd.concat(all_demographics, ignore_index=True)
+
+    return X_combined, demographic_combined, y_combined
 
 
 def build_lstm_model(hp) -> Model:
@@ -239,9 +281,6 @@ def build_lstm_model(hp) -> Model:
     return model
 
 
-import keras_tuner as kt
-
-
 def run_hyperparameter_tuning() -> kt.RandomSearch:
     """Set up hyperparameter tuning using Keras Tuner."""
     tuner = kt.RandomSearch(
@@ -255,109 +294,69 @@ def run_hyperparameter_tuning() -> kt.RandomSearch:
     return tuner
 
 
-def train(
+def train_and_save_model(
     scores: DF = None, condition: dict = None, model_save_name: str = "default_name"
 ) -> dict:
-    """Train the LSTM model for each patient's data."""
-    patient_scaled_data, demographic_refined, X_time_series = scale_and_prepare(
+    """Train the LSTM model and save it as a single .keras file."""
+    X_combined, demographic_refined, y_combined = scale_and_prepare(
         scores=scores, condition=condition
     )
+    demographic_refined = demographic_refined.drop("number", axis=1)
+    demographic_refined = demographic_refined.to_numpy().astype(float)
 
-    model_store = {}
-    losses_store = {}
+    tuner = run_hyperparameter_tuning()
 
-    for patient_id, sequences in X_time_series.items():
-        vprint(f"Training model for patient: {patient_id}")
+    early_stopping = EarlyStopping(
+        monitor="val_loss", patience=5, restore_best_weights=True
+    )
 
-        demographic_data = (
-            demographic_refined.loc[demographic_refined["number"] == patient_id]
-            .drop(columns=["number"])
-            .to_numpy()
-            .astype(np.float32)
-        )
+    history = LossHistory()
 
-        # Preparing X and y
-        X = sequences
-        y_madrs2 = demographic_refined[demographic_refined["number"] == patient_id][
-            "madrs2"
-        ].values
-        y_delta_madrs = demographic_refined[
-            demographic_refined["number"] == patient_id
-        ]["deltamadrs"].values
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_combined, y_combined, test_size=0.3, random_state=42
+    )
 
-        y_madrs2 = np.repeat(y_madrs2, len(X)).astype(float)
-        y_delta_madrs = np.repeat(y_delta_madrs, len(X)).astype(float)
+    ic(1, X_train.shape, X_test.shape, y_train.shape, y_test.shape)
 
-        ic(X.shape, y_madrs2.shape, y_delta_madrs.shape)
+    tuner.search(
+        [X_train, demographic_refined],
+        [y_train[:, 0], y_train[:, 1]],
+        epochs=1,  # adjust here
+        validation_split=0.3,
+        callbacks=[early_stopping, history],
+    )
 
-        # Ensure y_madrs2 and y_delta_madrs have the same length as X
-        if len(X) != len(y_madrs2):
-            raise ValueError(
-                f"Length mismatch between X and y arrays for patient {patient_id}"
-            )
+    best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
 
-        # Create y_train and y_test arrays
-        y = np.vstack([y_madrs2, y_delta_madrs]).T  # Shape: (num_samples, 2)
-        y_train, y_test = train_test_split(y, test_size=0.3, random_state=42)
+    best_model = tuner.hypermodel.build(best_hps)
+    best_model.fit(
+        [
+            X_train,
+            demographic_refined,
+        ],
+        [y_train[:, 0], y_train[:, 1]],
+        epochs=2,  # adjust here
+        validation_split=0.2,
+        callbacks=[early_stopping, history],
+    )
 
-        X_train, X_test = train_test_split(X, test_size=0.3, random_state=42)
-
-        tuner = run_hyperparameter_tuning()
-
-        early_stopping = EarlyStopping(
-            monitor="val_loss", patience=5, restore_best_weights=True
-        )
-
-        history = LossHistory()
-
-        # Ensure y_train and y_test have the right dimensions
-        y_train_0 = y_train[:, 0]
-        y_train_1 = y_train[:, 1]
-        y_test_0 = y_test[:, 0]
-        y_test_1 = y_test[:, 1]
-
-        tuner.search(
-            [X_train, np.tile(demographic_data, (X_train.shape[0], 1))],
-            [y_train_0, y_train_1],
-            epochs=1,  # adjust here
-            validation_split=0.3,
-            callbacks=[early_stopping, history],
-        )
-
-        best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-
-        best_model = tuner.hypermodel.build(best_hps)
-        best_model.fit(
-            [X_train, np.tile(demographic_data, (X_train.shape[0], 1))],
-            [y_train_0, y_train_1],
-            epochs=2,  # adjust here
-            validation_split=0.2,
-            callbacks=[early_stopping, history],
-        )
-
-        loss = best_model.evaluate(
-            [X_test, np.tile(demographic_data, (X_test.shape[0], 1))],
-            [y_test_0, y_test_1],
-        )
-
-        model_store[patient_id] = best_model
-        losses_store[patient_id] = loss
+    loss = best_model.evaluate(
+        [X_test, demographic_refined],
+        [y_test[:, 0], y_test[:, 1]],
+    )
 
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     model_save_path = os.path.join(
-        top_path, "saved_models", model_save_name + f"_{timestamp}"
+        top_path, "saved_models", model_save_name + f"_{timestamp}.keras"
     )
-    os.makedirs(model_save_path, exist_ok=True)
+    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
 
-    for patient_id, model in model_store.items():
-        model.save(
-            os.path.join(model_save_path, f"{model_save_name}_{patient_id}.keras")
-        )
+    best_model.save(model_save_path)
 
     with open(os.path.join("results", f"{model_save_name}_losses.json"), "w") as f:
-        json.dump(losses_store, f)
+        json.dump(loss, f)
 
-    return model_store
+    return best_model
 
 
 def main():
@@ -365,10 +364,10 @@ def main():
     scores_data = load_scores()
     condition_data = load_condition_data(scores_data)
 
-    models = train(
+    model = train_and_save_model(
         scores=scores_data,
         condition=condition_data,
-        model_save_name="multi_patient_lstm",
+        model_save_name="combined_lstm_model",
     )
 
 

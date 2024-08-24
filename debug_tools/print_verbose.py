@@ -12,14 +12,14 @@ def print_verbose(arg: Any):
     """
 
     print(f"--- print_verbose ---\n")
-    prefix = '\n\t'
+    prefix = "\n\t"
     try:
         if isinstance(arg, np.ndarray):
             print(f"{prefix}TYPE: {type(arg)}")
             print(f"{prefix}SHAPE: {arg.shape}")
             print(f"{prefix}VALUE:\n{arg}")
         elif isinstance(arg, pd.DataFrame):
-            pd.set_option('display.max_columns', None)
+            pd.set_option("display.max_columns", None)
             arg.info()
             print(f"{prefix}TYPE: {type(arg)}")
             print(f"{prefix}SHAPE: {arg.shape}")
@@ -30,7 +30,10 @@ def print_verbose(arg: Any):
             print(f"{prefix}SHAPE: {arg.shape}")
             print(f"{prefix}VALUE:\n{arg}")
         elif isinstance(arg, str):
-            print(f"\tVALUE: {arg}")
+            print(f"\tVALUE: '{arg}'")
+        elif isinstance(arg, dict):
+            print(f"{prefix}KEYS: {arg.keys()}")
+            print(f"{prefix}VALUE:\n{arg}")
         else:
             print(f"{prefix}TYPE: {type(arg)}")
             print(f"{prefix}SHAPE: {np.shape(arg)}")
@@ -40,3 +43,8 @@ def print_verbose(arg: Any):
         print(f"error: {e.args[0]}\nfor type: {type(arg)}")
         print(arg)
 
+
+if __name__ == "__main__":
+    test = {"key": 3458}
+
+    print_verbose(test)
