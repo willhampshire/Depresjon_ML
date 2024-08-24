@@ -312,14 +312,22 @@ def train_and_save_model(
 
     history = LossHistory()
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_combined, y_combined, test_size=0.3, random_state=42
+    X_train, X_test, y_train, y_test, dem_train, dem_test = train_test_split(
+        X_combined, y_combined, demographic_refined, test_size=0.3, random_state=42
     )
 
-    ic(1, X_train.shape, X_test.shape, y_train.shape, y_test.shape)
+    ic(
+        1,
+        X_train.shape,
+        X_test.shape,
+        y_train.shape,
+        y_test.shape,
+        dem_train.shape,
+        dem_test.shape,
+    )
 
     tuner.search(
-        [X_train, demographic_refined],
+        [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
         epochs=1,  # adjust here
         validation_split=0.3,
@@ -332,7 +340,7 @@ def train_and_save_model(
     best_model.fit(
         [
             X_train,
-            demographic_refined,
+            dem_train,
         ],
         [y_train[:, 0], y_train[:, 1]],
         epochs=2,  # adjust here
@@ -341,7 +349,7 @@ def train_and_save_model(
     )
 
     loss = best_model.evaluate(
-        [X_test, demographic_refined],
+        [X_test, dem_test],
         [y_test[:, 0], y_test[:, 1]],
     )
 
