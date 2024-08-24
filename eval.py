@@ -6,6 +6,8 @@ import seaborn as sns
 losses_df = pd.read_csv("results/epoch_losses.csv")
 print(losses_df)
 
+# losses_df = losses_df.drop(["deltamadrs_mae", "loss", "madrs2_mae"], axis=1)
+
 # Melt the DataFrame to long format
 df_melted = losses_df.melt(id_vars="epoch", var_name="Metric", value_name="Value")
 
@@ -25,11 +27,13 @@ sns.lineplot(
 )
 
 # Customize the plot
-plt.title("Metrics vs Epoch")
+plt.title("Loss (MSE) & validation loss (MAE) vs Epoch")
 plt.xlabel("Epoch")
-plt.ylabel("Value")
+plt.ylabel("Loss [MADRS]")
 plt.legend(title="Metric")
 plt.grid(True)
+
+plt.ylim(0, 0.05)
 
 plt.savefig("results/all_losses.png", dpi=300)
 

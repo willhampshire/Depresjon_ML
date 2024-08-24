@@ -231,7 +231,7 @@ def scale_and_prepare(
 def build_lstm_model(hp) -> Model:
     """Build the LSTM model for training."""
     time_series_input = Input(shape=(None, 1), name="time_series_input")
-    time_series_masked_input = Masking(mask_value=-1.0)(time_series_input)
+    demographic_input = Input(shape=(5,), name="demographic_input")
 
     # Define hyperparameters using Keras Tuner methods
     lstm_units = hp.Int("lstm_units", min_value=50, max_value=200, step=50)
@@ -240,6 +240,9 @@ def build_lstm_model(hp) -> Model:
         "lstm_recurrent_dropout", min_value=0.0, max_value=0.5, step=0.1
     )
     l2_reg = hp.Float("l2_reg", min_value=0.0, max_value=0.1, step=0.01)
+    dense_dem_units = hp.Int("dense_dem_units", min_value=32, max_value=64, step=32)
+    dense1_units = hp.Int("dense1_units", min_value=32, max_value=128, step=32)
+    dense1_dropout = hp.Float("dense1_dropout", min_value=0.0, max_value=0.5, step=0.1)
 
     lstm_layer = LSTM(
         lstm_units,
@@ -247,14 +250,11 @@ def build_lstm_model(hp) -> Model:
         recurrent_dropout=lstm_recurrent_dropout,
         return_sequences=False,
         kernel_regularizer=l2(l2_reg),
-    )(time_series_masked_input)
+    )(time_series_input)
 
-    demographic_input = Input(shape=(5,), name="demographic_input")
+    dense_layer_dem = Dense(dense_dem_units, activation="relu")(demographic_input)
 
-    combined_input = concatenate([lstm_layer, demographic_input])
-
-    dense1_units = hp.Int("dense1_units", min_value=32, max_value=128, step=32)
-    dense1_dropout = hp.Float("dense1_dropout", min_value=0.0, max_value=0.5, step=0.1)
+    combined_input = concatenate([lstm_layer, dense_layer_dem])
 
     dense_layer = Dense(dense1_units, activation="relu", kernel_regularizer=l2(l2_reg))(
         combined_input
@@ -277,7 +277,7 @@ def run_hyperparameter_tuning() -> kt.RandomSearch:
     tuner = kt.RandomSearch(
         build_lstm_model,
         objective="val_loss",
-        max_trials=2,  # Number of trials
+        max_trials=4,  # Number of trials
         executions_per_trial=1,  # Number of executions per trial
         directory="hp_tuning",
         project_name="LSTM_tuning",
@@ -298,7 +298,7 @@ def train_and_save_model(
     tuner = run_hyperparameter_tuning()
 
     early_stopping = EarlyStopping(
-        monitor="val_loss", patience=5, restore_best_weights=True
+        monitor="val_loss", patience=10, restore_best_weights=True
     )
 
     history = LossHistory()
@@ -320,7 +320,7 @@ def train_and_save_model(
     tuner.search(
         [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=3,  # adjust here
+        epochs=5,  # adjust here
         validation_split=0.3,
         callbacks=[early_stopping, history],
     )
