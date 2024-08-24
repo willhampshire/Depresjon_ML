@@ -59,32 +59,23 @@ data_path = top_path + r"/data"  # Adjust to your data directory
 
 
 class LossHistory(Callback):
-    """Custom callback to record losses during training."""
-
     def on_train_begin(self, logs=None):
-        self.epoch_losses = {
-            "madrs2_loss": [],
-            "deltamadrs_loss": [],
-            "val_madrs2_loss": [],
-            "val_deltamadrs_loss": [],
-        }
+        # Initialize dictionaries to store losses for each output
+        self.epoch_losses = DF()
 
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
-        if "loss" in logs:
-            if isinstance(logs["loss"], list):
-                self.epoch_losses["madrs2_loss"].append(logs["loss"][0])
-                self.epoch_losses["deltamadrs_loss"].append(logs["loss"][1])
-            else:
-                self.epoch_losses["madrs2_loss"].append(-1)
-                self.epoch_losses["deltamadrs_loss"].append(-1)
-        if "val_loss" in logs:
-            if isinstance(logs["val_loss"], list):
-                self.epoch_losses["val_madrs2_loss"].append(logs["val_loss"][0])
-                self.epoch_losses["val_deltamadrs_loss"].append(logs["val_loss"][1])
-            else:
-                self.epoch_losses["val_madrs2_loss"].append(-1)
-                self.epoch_losses["val_deltamadrs_loss"].append(-1)
+        logs_df = DF([logs])
+
+        self.epoch_losses = pd.concat([self.epoch_losses, logs_df])
+
+    def on_train_end(self, logs=None):
+        losses_path = os.path.join("results", f"epoch_losses.csv")
+        self.epoch_losses.index = range(1, len(self.epoch_losses) + 1)
+        self.epoch_losses = self.epoch_losses.reset_index(drop=False)
+        self.epoch_losses.rename(columns={"index": "epoch"}, inplace=True)
+
+        self.epoch_losses.to_csv(losses_path, index=False)
 
 
 def interpret_values(row, conversions, float_conv=0) -> pd.Series:
@@ -329,7 +320,7 @@ def train_and_save_model(
     tuner.search(
         [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=1,  # adjust here
+        epochs=3,  # adjust here
         validation_split=0.3,
         callbacks=[early_stopping, history],
     )
@@ -343,8 +334,8 @@ def train_and_save_model(
             dem_train,
         ],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=2,  # adjust here
-        validation_split=0.2,
+        epochs=20,  # adjust here
+        validation_split=0.3,
         callbacks=[early_stopping, history],
     )
 
@@ -353,7 +344,6 @@ def train_and_save_model(
         [y_test[:, 0], y_test[:, 1]],
     )
 
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     model_save_path = os.path.join(
         top_path, "saved_models", model_save_name + f"_{timestamp}.keras"
     )
@@ -367,15 +357,21 @@ def train_and_save_model(
     return best_model
 
 
+timestamp = None
+
+
 def main():
     """Main function to execute the training."""
+    global timestamp
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+
     scores_data = load_scores()
     condition_data = load_condition_data(scores_data)
 
     model = train_and_save_model(
         scores=scores_data,
         condition=condition_data,
-        model_save_name="combined_lstm_model",
+        model_save_name="lstm_2_targets",
     )
 
 
