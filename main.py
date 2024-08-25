@@ -277,8 +277,8 @@ def run_hyperparameter_tuning() -> kt.RandomSearch:
     tuner = kt.RandomSearch(
         build_lstm_model,
         objective="val_loss",
-        max_trials=2,  # Number of trials - recc. 5
-        executions_per_trial=1,  # Number of executions per trial - recc. 3
+        max_trials=5,  # Number of trials - recc. 5
+        executions_per_trial=3,  # Number of executions per trial - recc. 3
         directory="hp_tuning",
         project_name="LSTM_tuning",
     )
@@ -298,7 +298,7 @@ def train_and_save_model(
     tuner = run_hyperparameter_tuning()
 
     early_stopping = EarlyStopping(
-        monitor="val_loss", patience=10, restore_best_weights=True
+        monitor="val_loss", patience=5, restore_best_weights=True
     )
 
     history = LossHistory()
@@ -321,7 +321,7 @@ def train_and_save_model(
     tuner.search(
         [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=1,  # adjust here - recc. 5
+        epochs=5,  # adjust here - recc. 5
         validation_split=0.3,
         callbacks=[early_stopping, history],
     )
@@ -334,7 +334,7 @@ def train_and_save_model(
     best_model.fit(
         [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=2,  # adjust here - recc. 20
+        epochs=20,  # adjust here - recc. 20
         validation_split=0.3,
         callbacks=[early_stopping, history],
     )
@@ -357,15 +357,14 @@ def train_and_save_model(
     r2_madrs2 = calculate_r2(y_test[:, 0], y_pred[0].flatten())
     r2_delta_madrs = calculate_r2(y_test[:, 1], y_pred[1].flatten())
 
+    ic(loss)
     # Collect all metrics
     metrics = {
-        "loss": loss[0],  # Combined loss
-        "madrs2_loss": loss[1],
-        "deltamadrs_loss": loss[2],
-        "madrs2_mae": loss[3],
-        "deltamadrs_mae": loss[4],
+        "combined_loss": loss[0],  # Combined loss for both outputs
+        "madrs2_loss": loss[1],  # Loss (MSE) for 'madrs2'
+        "deltamadrs_loss": loss[2],  # Loss (MSE) for 'deltamadrs'
         "r2_madrs2": r2_madrs2,
-        "r2_delta_madrs": r2_delta_madrs,
+        "r2_delta": r2_delta_madrs,
     }
 
     # Save the model
