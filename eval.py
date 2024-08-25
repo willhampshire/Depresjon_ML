@@ -34,6 +34,7 @@ plt.legend(title="Metric")
 plt.grid(True)
 
 plt.ylim(0, 0.05)
+plt.xticks(losses_df["epoch"].astype(int))
 
 plt.savefig("results/all_losses.png", dpi=300)
 

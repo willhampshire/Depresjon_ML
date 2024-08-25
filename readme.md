@@ -61,26 +61,26 @@ states based on sensor data".
 - **Raw Data Samples:** 23
 
 ### Performance Metrics
-- **Mean Squared Error:** 5.147e-02
-- **Root Mean Squared Error:** 2.269e-01
-- **Mean Absolute Error:** 1.450e-01
-- **R-squared:** 0.998
+- **Mean Squared Error:** TBD
+- **Root Mean Squared Error:** TBD
+- **Mean Absolute Error:** TBD
+- **R-squared:** TBD
 
 Anti-overfitting measures - dropout layers, L2 regularization, and early stopping (not triggered) - are implemented. 
 For smaller datasets, it can be easy to train to specific data rather than learning more holistically (e.g. noise 
 is fitted into the model).
 
-Mean Absolute Error (MAE) of 0.145 indicates the average absolute difference between predicted and actual values.
+Mean Absolute Error (MAE) of ___ indicates the average absolute difference between predicted and actual values.
 The value predicted is represented in the source data as 'madrs2', and the context of this number means anything of the 
-order <1 means an accurate prediction is made. Additionally, 99.8% of the variance in the prediction is explained within
+order <1 means an accurate prediction is made. Additionally, ___% of the variance in the prediction is explained within
 the model (R-squared) - this indicates the data is fitted well. Samples tested on: 23 × 30% = 6.9 => 7.
 
-Relative MAE = MAE / MADRS range = (0.145 / 60) × 100 = 0.242%
+Relative MAE = MAE / MADRS range = (__ / 60) × 100 = __%
 
-Here I ran an overfitted epochs number to demonstrate the anti-overfitting callback `early_stopping` with `patience=5` 
-identifying 10 epochs as the limit before overfitting starts to occur:
+Here I ran with anti-overfitting callback `early_stopping`, with `patience=10` 
+stopping training 18 epochs.
 
-![Model losses image](model_losses.png)
+![Model losses image](results/all_losses.png)
 
 ## Future considerations
 - **Initial data dependency:** Train the model without initial MADRS score, eliminating the need for initial MADRS test.
