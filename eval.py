@@ -29,7 +29,7 @@ sns.lineplot(
 # Customize the plot
 plt.title("Loss (MSE) & validation loss (MAE) vs Epoch")
 plt.xlabel("Epoch")
-plt.ylabel("Loss [MADRS]")
+plt.ylabel("Loss")
 plt.legend(title="Metric")
 plt.grid(True)
 
