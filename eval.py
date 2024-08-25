@@ -41,5 +41,18 @@ plt.savefig("results/all_losses.png", dpi=300)
 # Show plot
 plt.show()
 
+
+scores = pd.read_csv("data/scores.csv")
+range_madrs2 = scores["madrs2"].max() - scores["madrs2"].min()
+
+
 last_run = losses_df.iloc[-1]
 print(f"Last metrics: \n{last_run}")
+
+# print(scores["madrs2"].max(), scores["madrs2"].min()) check max-min
+
+print(
+    f"\nValidation losses (input madrs range {range_madrs2:.1f})"
+    f"\ndelta MAE: {last_run['val_deltamadrs_mae']:.5f}, {last_run['val_deltamadrs_mae']/range_madrs2 * 100:.4f}%"
+    f"\nmadrs2 MAE: {last_run['val_madrs2_mae']:.5f}, {last_run['val_deltamadrs_mae']/range_madrs2 * 100:.4f}%"
+)

@@ -1,14 +1,13 @@
 # Predicting Depression on MADRS Scale using LSTM (RNN) Machine Learning with Motor Activity Time Series Data
-## CLASSIFICATION BRANCH
-### (some untested code)
+
 ## Usage
-Clone repository and run `main.py`, or alternatively, use the notebook verision `modeltesting.ipynb` which I used to 
-test the model metrics and graph the loss functions. Notebook format is better for running code after creating the model
-without re-training the model.
+Clone repository and run `main.py`, then `eval.py` to graph the loss functions. Script to load and test the model on
+new time series and demographic data coming soon.
 
 ## Introduction
 Using the ['Depresjon'](https://datasets.simula.no/depresjon/) open source dataset, an LSTM machine learning model was 
-used to predict level of depression measured on the MADRS scale. There are 23 condition data files, where subjects were 
+trained to predict level of depression measured on the MADRS scale, and the change in MADRS score since the start of the time series. 
+There are 23 condition data files, where subjects were 
 measured on the MADRS scale before and after the accompanying Activity time series measurements. Data is fed into the model
 in two parts; time series and additional demographic data.
 

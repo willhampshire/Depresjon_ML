@@ -277,8 +277,8 @@ def run_hyperparameter_tuning() -> kt.RandomSearch:
     tuner = kt.RandomSearch(
         build_lstm_model,
         objective="val_loss",
-        max_trials=4,  # Number of trials
-        executions_per_trial=1,  # Number of executions per trial
+        max_trials=2,  # Number of trials - recc. 5
+        executions_per_trial=1,  # Number of executions per trial - recc. 3
         directory="hp_tuning",
         project_name="LSTM_tuning",
     )
@@ -317,42 +317,67 @@ def train_and_save_model(
         dem_test.shape,
     )
 
+    # Hyperparameter tuning
     tuner.search(
         [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=5,  # adjust here
+        epochs=1,  # adjust here - recc. 5
         validation_split=0.3,
         callbacks=[early_stopping, history],
     )
 
+    # Retrieve best hyperparameters and build the best model
     best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-
     best_model = tuner.hypermodel.build(best_hps)
+
+    # Train the model with best hyperparameters
     best_model.fit(
-        [
-            X_train,
-            dem_train,
-        ],
+        [X_train, dem_train],
         [y_train[:, 0], y_train[:, 1]],
-        epochs=20,  # adjust here
+        epochs=2,  # adjust here - recc. 20
         validation_split=0.3,
         callbacks=[early_stopping, history],
     )
 
+    # Evaluate the model
     loss = best_model.evaluate(
         [X_test, dem_test],
         [y_test[:, 0], y_test[:, 1]],
     )
 
+    # Predict on the test set
+    y_pred = best_model.predict([X_test, dem_test])
+
+    # Calculate R-squared for both outputs
+    def calculate_r2(y_true, y_pred):
+        ss_res = np.sum((y_true - y_pred) ** 2)
+        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+        return 1 - ss_res / ss_tot
+
+    r2_madrs2 = calculate_r2(y_test[:, 0], y_pred[0].flatten())
+    r2_delta_madrs = calculate_r2(y_test[:, 1], y_pred[1].flatten())
+
+    # Collect all metrics
+    metrics = {
+        "loss": loss[0],  # Combined loss
+        "madrs2_loss": loss[1],
+        "deltamadrs_loss": loss[2],
+        "madrs2_mae": loss[3],
+        "deltamadrs_mae": loss[4],
+        "r2_madrs2": r2_madrs2,
+        "r2_delta_madrs": r2_delta_madrs,
+    }
+
+    # Save the model
     model_save_path = os.path.join(
         top_path, "saved_models", model_save_name + f"_{timestamp}.keras"
     )
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
-
     best_model.save(model_save_path)
 
-    with open(os.path.join("results", f"{model_save_name}_losses.json"), "w") as f:
-        json.dump(loss, f)
+    # Save metrics to a JSON file
+    with open(os.path.join("results", f"{model_save_name}_metrics.json"), "w") as f:
+        json.dump(metrics, f)
 
     return best_model
 
