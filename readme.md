@@ -69,12 +69,17 @@ Anti-overfitting measures - dropout layers, L2 regularization, and early stoppin
 For smaller datasets, it can be easy to train to specific data rather than learning more holistically (e.g. noise 
 is fitted into the model).
 
-Mean Absolute Error (MAE) of ___ indicates the average absolute difference between predicted and actual values.
-The value predicted is represented in the source data as 'madrs2', and the context of this number means anything of the 
-order <1 means an accurate prediction is made. Additionally, ___% of the variance in the prediction is explained within
+Mean Absolute Error (MAE) of 0.01 indicates the average absolute difference between predicted and actual values.
+The value predicted is represented in the source data as 'madrs2', and the context of this number means anything of 
+order <1 means an accurate prediction is made on the MADRS scale, and is well below that. Additionally, 99% of the 
+variance in the prediction is explained within
 the model (R-squared) - this indicates the data is fitted well. Samples tested on: 23 × 30% = 6.9 => 7.
 
-Relative MAE = MAE / MADRS range = (__ / 60) × 100 = __%
+Relative MAE = MAE / MADRS range = (0.01 / 60) × 100 = 0.00016%
+
+Further tests are required to determine whether the model is overfitted to the dataset, however the train-test split 
+being 0.7 train 0.3 test would suggest there is sufficient data to validate on. The below graph illustrates how
+the absolute validation metrics are tiny at 17 training epochs.
 
 Here I ran with anti-overfitting callback `early_stopping`, with `patience=10` 
 stopping training 18 epochs.
